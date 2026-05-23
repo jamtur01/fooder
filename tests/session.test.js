@@ -7,6 +7,8 @@ import {
   getSwipes,
   advanceOnMatch,
   isDeckExhausted,
+  resetPhase,
+  resetSession,
 } from "../src/session.js";
 
 let db;
@@ -132,5 +134,24 @@ describe("isDeckExhausted", () => {
       recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: id, direction: "right" });
     }
     expect(isDeckExhausted(db, s.id, "cuisines", deckIds)).toBe(true);
+  });
+});
+
+describe("resets", () => {
+  it("resetPhase clears swipes for the given phase only", () => {
+    const s = createSession(db);
+    recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: "thai", direction: "right" });
+    recordSwipe(db, { sessionId: s.id, side: "a", phase: "restaurants", itemId: "ChIJ1", direction: "right" });
+    resetPhase(db, s.id, "cuisines");
+    expect(getSwipes(db, s.id, "cuisines")).toHaveLength(0);
+    expect(getSwipes(db, s.id, "restaurants")).toHaveLength(1);
+  });
+  it("resetSession creates a new session in cuisines phase", () => {
+    const s1 = createSession(db);
+    advanceOnMatch(db, { sessionId: s1.id, phase: "cuisines", match: { id: "thai", name: "Thai" } });
+    const s2 = resetSession(db);
+    expect(s2.id).toBeGreaterThan(s1.id);
+    expect(s2.phase).toBe("cuisines");
+    expect(getCurrentSession(db).id).toBe(s2.id);
   });
 });

@@ -81,3 +81,15 @@ export function isDeckExhausted(db, sessionId, phase, deckIds) {
   const bSwiped = new Set(rows.filter(r => r.side === "b").map(r => r.item_id));
   return deckIds.every(id => aSwiped.has(id) && bSwiped.has(id));
 }
+
+export function resetPhase(db, sessionId, phase) {
+  db.prepare("DELETE FROM swipe WHERE session_id=? AND phase=?").run(
+    sessionId,
+    phase,
+  );
+  db.prepare("UPDATE session SET updated_at=? WHERE id=?").run(now(), sessionId);
+}
+
+export function resetSession(db) {
+  return createSession(db);
+}
