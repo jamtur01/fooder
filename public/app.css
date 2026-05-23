@@ -32,17 +32,22 @@ body { display: flex; flex-direction: column; }
 .card .meta { color: #aaa; font-size: 0.9rem; }
 
 .hint {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  font-size: 1.1rem;
+  text-align: center;
+  font-size: 1.15rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 0 0.5rem;
+  color: #888;
 }
-.hint-left { color: #f87171; }
-.hint-right { color: #4cf; }
+.hint-no { color: #f87171; }
+.hint-yes { color: #4cf; }
 .deck-reset { margin-top: 0.25rem; }
+
+.match-banner {
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  color: #4cf;
+}
 
 .match-card { text-align: center; display: flex; flex-direction: column; gap: 0.75rem; align-items: center; }
 .match-card img { width: 100%; max-width: 320px; max-height: 200px; object-fit: cover; border-radius: 1rem; }
