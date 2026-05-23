@@ -6,6 +6,9 @@ node_modules/
 .env
 .env.local
 *.log
+*.swp
+.*.swp
+*.swo
 
 # auto-created by claude-mem tooling, not project content
 CLAUDE.md
