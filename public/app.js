@@ -8,7 +8,7 @@ const views = {
   empty: $('#view-empty'),
 };
 
-const SIDE = location.pathname.endsWith('/b') ? 'b' : 'a';
+const SIDE = window.MY_SIDE === 'b' ? 'b' : 'a';
 const Q = `?side=${SIDE}`;
 
 let state = null;  // { phase, deck, mySwipes, matchedCuisine, matchedRestaurant, partnerOnline, partnerName }
@@ -18,8 +18,9 @@ function showView(name) {
 }
 
 function setStatus() {
-  $('[data-phase]').textContent = `${state.myName ?? SIDE.toUpperCase()} · ${state.phase}`;
-  const partner = state.partnerName ?? (SIDE === 'a' ? 'B' : 'A');
+  const me = state.myName ?? window.SIDE_NAMES?.[SIDE] ?? SIDE.toUpperCase();
+  const partner = state.partnerName ?? window.SIDE_NAMES?.[SIDE === 'a' ? 'b' : 'a'] ?? (SIDE === 'a' ? 'B' : 'A');
+  $('[data-phase]').textContent = `${me} · ${state.phase}`;
   $('[data-partner]').textContent = `${partner}: ${state.partnerOnline ? 'online' : 'offline'}`;
 }
 

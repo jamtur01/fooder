@@ -1,4 +1,5 @@
 import express from 'express';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseCookie, serialize as serializeCookie } from 'cookie';
@@ -15,6 +16,16 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
+const INDEX_HTML = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8');
+
+function slugify(name) {
+  return name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
+}
+
+function renderIndex(side, sideNames) {
+  const inject = `<script>window.MY_SIDE=${JSON.stringify(side)};window.SIDE_NAMES=${JSON.stringify(sideNames)};</script>`;
+  return INDEX_HTML.replace('<!--SIDE-->', inject);
+}
 
 function sideOf(req) {
   if (req.query?.side === 'a' || req.query?.side === 'b') return req.query.side;
@@ -50,36 +61,36 @@ function cuisineById(id) { return CUISINES.find(c => c.id === id); }
 export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) {
   const router = express.Router();
 
+  const slugs = { a: slugify(sideNames.a), b: slugify(sideNames.b) };
+  const sideBySlug = {
+    a: 'a', b: 'b',
+    [slugs.a]: 'a',
+    [slugs.b]: 'b',
+  };
+
   router.get('/', (req, res) => {
     const cookies = parseCookie(req.headers.cookie ?? '');
     const side = cookies.side === 'b' ? 'b' : 'a';
     if (!cookies.side) {
-      res.setHeader(
-        'Set-Cookie',
-        serializeCookie('side', side, {
-          path: '/',
-          sameSite: 'lax',
-          httpOnly: false,
-          maxAge: 60 * 60 * 24 * 365,
-        })
-      );
+      res.setHeader('Set-Cookie', serializeCookie('side', side, {
+        path: '/', sameSite: 'lax', httpOnly: false, maxAge: 60 * 60 * 24 * 365,
+      }));
     }
-    res.redirect(`/${side}`);
+    res.redirect(`/${slugs[side]}`);
   });
 
   function serveIndex(res, side) {
-    res.setHeader(
-      'Set-Cookie',
-      serializeCookie('side', side, {
-        path: '/',
-        sameSite: 'lax',
-        maxAge: 31536000,
-      })
-    );
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+    res.setHeader('Set-Cookie', serializeCookie('side', side, {
+      path: '/', sameSite: 'lax', maxAge: 31536000,
+    }));
+    res.type('html').send(renderIndex(side, sideNames));
   }
-  router.get('/a', (_req, res) => serveIndex(res, 'a'));
-  router.get('/b', (_req, res) => serveIndex(res, 'b'));
+
+  router.get('/:slug', (req, res, next) => {
+    const side = sideBySlug[req.params.slug];
+    if (!side) return next();
+    serveIndex(res, side);
+  });
 
   router.get('/api/state', requireSide, async (req, res) => {
     const session = ensureSession(db);

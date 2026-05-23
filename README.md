@@ -13,9 +13,9 @@ Requires Node 24 (pinned via `.mise.toml`).
 
 `npm run dev` loads `.env` via Node's built-in `--env-file` flag.
 
-Open http://localhost:3000/a in one window/tab and /b in another. Each tab identifies its side from the URL path (and sends `?side=a|b` on every API call), so two tabs in the same browser work fine.
+Open http://localhost:3000/a in one window/tab and /b in another. Two tabs in the same browser work fine — each page bakes its side into the HTML and sends `?side=a|b` on every API call.
 
-Set `SIDE_A_NAME` and `SIDE_B_NAME` in `.env` to show real names in the status bar instead of "A" / "B".
+Set `SIDE_A_NAME` and `SIDE_B_NAME` in `.env` to use real names. With `SIDE_A_NAME=James`, `/` redirects to `/james` and you can open `/sarah` for the other side. `/a` and `/b` still work as canonical aliases.
 
 ## Tests
 
