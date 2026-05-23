@@ -1,0 +1,10 @@
+node_modules/
+*.db
+*.db-journal
+.env
+.env.local
+*.log
+
+# auto-created by claude-mem tooling, not project content
+CLAUDE.md
+**/CLAUDE.md
