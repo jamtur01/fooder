@@ -9,8 +9,6 @@ const views = {
 };
 
 let state = null;  // { phase, deck, mySwipes, matchedCuisine, matchedRestaurant, partnerOnline }
-let deckIds = [];  // ids in order
-let topIndex = 0;  // index of the top card
 
 function showView(name) {
   for (const [k, el] of Object.entries(views)) el.hidden = (k !== name);
@@ -120,8 +118,6 @@ function applyState() {
   }
   const mySwipedIds = new Set(state.mySwipes.map(s => s.itemId));
   const remaining = state.deck.filter(item => !mySwipedIds.has(item.id));
-  deckIds = remaining.map(i => i.id);
-  topIndex = 0;
 
   if (remaining.length === 0) {
     const partnerStillSwiping = !state.partnerOnline ? 'waiting for partner…' :
