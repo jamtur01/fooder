@@ -1,7 +1,7 @@
 export const CUISINES = [
   { id: 'pizza', name: 'Pizza', emoji: '🍕' },
   { id: 'thai', name: 'Thai', emoji: '🍜' },
-  { id: 'sushi', name: 'Sushi', emoji: '🍣' },
+  { id: 'japanese', name: 'Japanese', emoji: '🍱' },
   { id: 'burgers', name: 'Burgers', emoji: '🍔' },
   { id: 'mexican', name: 'Mexican', emoji: '🌮' },
   { id: 'indian', name: 'Indian', emoji: '🍛' },
@@ -11,7 +11,7 @@ export const CUISINES = [
   { id: 'vietnamese', name: 'Vietnamese', emoji: '🍲' },
   { id: 'ramen', name: 'Ramen', emoji: '🍥' },
   { id: 'italian', name: 'Italian', emoji: '🍝' },
-  { id: 'bbq', name: 'BBQ', emoji: '🍖' },
+  { id: 'ethiopian', name: 'Ethiopian', emoji: '🫓' },
   { id: 'sandwiches', name: 'Sandwiches', emoji: '🥪' },
   { id: 'salad', name: 'Salad', emoji: '🥗' },
 ];
