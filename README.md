@@ -4,9 +4,14 @@ Two-person swipe app for picking dinner. Personal hack.
 
 ## Local dev
 
+Requires Node 24 (pinned via `.mise.toml`).
+
+    mise install               # installs Node 24 if not present
     npm install
-    cp .env.example .env  # fill in GOOGLE_PLACES_API_KEY, HOME_LAT, HOME_LNG
+    cp .env.example .env       # fill in GOOGLE_PLACES_API_KEY, HOME_LAT, HOME_LNG
     npm run dev
+
+`npm run dev` loads `.env` via Node's built-in `--env-file` flag.
 
 Open http://localhost:3000/a in one window and /b in another (use a separate browser profile or incognito so cookies don't collide).
 
