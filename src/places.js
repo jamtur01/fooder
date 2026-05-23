@@ -18,6 +18,8 @@ const PRICE_LEVEL_MAP = {
   PRICE_LEVEL_VERY_EXPENSIVE: 4,
 };
 
+const TTL_MS = 24 * 3600 * 1000;
+
 function normalize(place) {
   const photoName = place.photos?.[0]?.name ?? null;
   return {
@@ -32,16 +34,25 @@ function normalize(place) {
   };
 }
 
-export function makePlacesClient({ db: _db, fetch, apiKey, home, radiusMeters, now: _now }) {
-  async function searchRestaurants(cuisine) {
+export function makePlacesClient({ db, fetch, apiKey, home, radiusMeters, now }) {
+  const locationKey = `${home.lat},${home.lng}`;
+
+  function readCache(cuisine) {
+    return db.prepare(
+      'SELECT payload_json, fetched_at FROM restaurant_cache WHERE cuisine=? AND location=?'
+    ).get(cuisine, locationKey);
+  }
+
+  function writeCache(cuisine, payload) {
+    db.prepare(
+      'INSERT OR REPLACE INTO restaurant_cache(cuisine, location, payload_json, fetched_at) VALUES (?,?,?,?)'
+    ).run(cuisine, locationKey, JSON.stringify(payload), now());
+  }
+
+  async function callApi(cuisine) {
     const body = {
       textQuery: `${cuisine} restaurants`,
-      locationBias: {
-        circle: {
-          center: { latitude: home.lat, longitude: home.lng },
-          radius: radiusMeters,
-        },
-      },
+      locationBias: { circle: { center: { latitude: home.lat, longitude: home.lng }, radius: radiusMeters } },
       maxResultCount: 10,
       openNow: true,
     };
@@ -54,11 +65,25 @@ export function makePlacesClient({ db: _db, fetch, apiKey, home, radiusMeters, n
       },
       body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      throw new Error(`Places API ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Places API ${res.status}`);
     const data = await res.json();
     return (data.places ?? []).map(normalize);
   }
+
+  async function searchRestaurants(cuisine) {
+    const cached = readCache(cuisine);
+    if (cached && now() - cached.fetched_at < TTL_MS) {
+      return JSON.parse(cached.payload_json);
+    }
+    try {
+      const fresh = await callApi(cuisine);
+      writeCache(cuisine, fresh);
+      return fresh;
+    } catch (err) {
+      if (cached) return JSON.parse(cached.payload_json);
+      throw err;
+    }
+  }
+
   return { searchRestaurants };
 }
