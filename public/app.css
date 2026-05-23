@@ -4,9 +4,18 @@ html, body { margin: 0; height: 100%; font-family: -apple-system, system-ui, san
 body { display: flex; flex-direction: column; }
 
 .status {
-  display: flex; justify-content: space-between;
-  padding: 0.5rem 1rem; background: #000; font-size: 0.85rem; color: #888;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.85rem 1.25rem; background: #000; color: #eee;
   border-bottom: 1px solid #222;
+}
+.status-phase {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.status-partner {
+  font-size: 0.9rem;
+  color: #888;
 }
 
 #app { flex: 1; display: flex; align-items: center; justify-content: center; padding: 1rem; overflow-y: auto; }

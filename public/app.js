@@ -17,11 +17,18 @@ function showView(name) {
   for (const [k, el] of Object.entries(views)) el.hidden = (k !== name);
 }
 
+const PHASE_LABELS = {
+  cuisines: 'Choosing a cuisine',
+  restaurants: 'Choosing a restaurant',
+  done: 'Matched!',
+};
+
 function setStatus() {
   const me = state.myName ?? window.SIDE_NAMES?.[SIDE] ?? SIDE.toUpperCase();
   const partner = state.partnerName ?? window.SIDE_NAMES?.[SIDE === 'a' ? 'b' : 'a'] ?? (SIDE === 'a' ? 'B' : 'A');
-  $('[data-phase]').textContent = `${me} · ${state.phase}`;
-  $('[data-partner]').textContent = `${partner}: ${state.partnerOnline ? 'online' : 'offline'}`;
+  const phase = PHASE_LABELS[state.phase] ?? state.phase;
+  $('[data-phase]').textContent = phase;
+  $('[data-partner]').textContent = `${me} · ${partner} ${state.partnerOnline ? '🟢' : '⚫'}`;
 }
 
 function attachSwipe(stack) {
