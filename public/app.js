@@ -25,7 +25,7 @@ function attachSwipe(stack) {
   const top = cards[cards.length - 1];  // last in DOM = top of stack (we render reversed)
   let startX = 0, dx = 0, dragging = false;
 
-  const threshold = window.innerWidth * 0.3;
+  const threshold = Math.min(top.getBoundingClientRect().width * 0.3, 120);
 
   top.addEventListener('pointerdown', (e) => {
     dragging = true; startX = e.clientX; dx = 0;
