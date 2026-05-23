@@ -62,3 +62,25 @@ describe('POST /api/reset', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('side routing', () => {
+  it('GET / with no cookie redirects to /a and sets cookie', async () => {
+    const res = await request(app).get('/');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/a');
+    expect(res.headers['set-cookie']?.[0]).toMatch(/side=a/);
+  });
+  it('GET / with side=b cookie redirects to /b', async () => {
+    const res = await request(app).get('/').set('Cookie', 'side=b');
+    expect(res.headers.location).toBe('/b');
+  });
+  it('GET /a sets cookie and returns 200 (index.html)', async () => {
+    const res = await request(app).get('/a');
+    expect(res.status).toBe(200);
+    expect(res.headers['set-cookie']?.[0]).toMatch(/side=a/);
+  });
+  it('GET /c is 404', async () => {
+    const res = await request(app).get('/c');
+    expect(res.status).toBe(404);
+  });
+});

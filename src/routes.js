@@ -1,5 +1,7 @@
 import express from 'express';
-import { parse as parseCookie } from 'cookie';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parse as parseCookie, serialize as serializeCookie } from 'cookie';
 import { CUISINES } from './cuisines.js';
 import {
   createSession,
@@ -10,6 +12,9 @@ import {
   resetPhase,
   resetSession,
 } from './session.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
 
 function sideOf(req) {
   const cookies = parseCookie(req.headers.cookie ?? '');
@@ -43,6 +48,37 @@ function cuisineById(id) { return CUISINES.find(c => c.id === id); }
 
 export function makeRouter({ db, places, hub }) {
   const router = express.Router();
+
+  router.get('/', (req, res) => {
+    const cookies = parseCookie(req.headers.cookie ?? '');
+    const side = cookies.side === 'b' ? 'b' : 'a';
+    if (!cookies.side) {
+      res.setHeader(
+        'Set-Cookie',
+        serializeCookie('side', side, {
+          path: '/',
+          sameSite: 'lax',
+          httpOnly: false,
+          maxAge: 60 * 60 * 24 * 365,
+        })
+      );
+    }
+    res.redirect(`/${side}`);
+  });
+
+  function serveIndex(res, side) {
+    res.setHeader(
+      'Set-Cookie',
+      serializeCookie('side', side, {
+        path: '/',
+        sameSite: 'lax',
+        maxAge: 31536000,
+      })
+    );
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  }
+  router.get('/a', (_req, res) => serveIndex(res, 'a'));
+  router.get('/b', (_req, res) => serveIndex(res, 'b'));
 
   router.get('/api/state', requireSide, async (req, res) => {
     const session = ensureSession(db);
@@ -143,6 +179,8 @@ export function makeRouter({ db, places, hub }) {
       res.status(400).end();
     }
   });
+
+  router.use(express.static(PUBLIC_DIR));
 
   return router;
 }
