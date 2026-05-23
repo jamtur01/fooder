@@ -1,5 +1,35 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>fooder</title></head>
-<body><div id="app">loading…</div></body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>fooder</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="status">
+    <span class="status-phase" data-phase>phase: loading…</span>
+    <span class="status-partner" data-partner>partner: ?</span>
+  </header>
+  <main id="app">
+    <section id="view-cuisines" class="view deck" hidden>
+      <div class="card-stack" data-deck="cuisines"></div>
+      <div class="hint">swipe right for yes, left for no</div>
+    </section>
+    <section id="view-restaurants" class="view deck" hidden>
+      <div class="card-stack" data-deck="restaurants"></div>
+      <div class="hint">swipe right for yes, left for no</div>
+    </section>
+    <section id="view-match" class="view" hidden>
+      <div class="match-card" data-match></div>
+      <button type="button" class="btn-primary" data-action="reset-session">Start over</button>
+    </section>
+    <section id="view-empty" class="view" hidden>
+      <p data-empty-message></p>
+      <button type="button" class="btn-primary" data-action="reset-phase">Try this round again</button>
+      <button type="button" class="btn-secondary" data-action="reset-session">Start over</button>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
 </html>
