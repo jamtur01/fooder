@@ -97,3 +97,7 @@ Pricing: ~$32 per 1000 Text Search calls, ~$17 per 1000 Place Details calls. Bot
 - `src/sse.js` — connection hub: register/unregister, broadcast, online tracking
 - `src/routes.js` — Express routes for `/api/*`, slugged side serving, photo proxy
 - `public/` — vanilla HTML/CSS/JS frontend, no build step
+
+## License
+
+MIT. See [LICENSE](LICENSE). © 2026 James Turnbull &lt;james@ltl.so&gt;
