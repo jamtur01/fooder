@@ -5,6 +5,7 @@ import {
   recordSwipe,
   getCurrentSession,
   getSwipes,
+  advanceOnMatch,
 } from "../src/session.js";
 
 let db;
@@ -92,5 +93,22 @@ describe("recordSwipe + match detection (cuisines)", () => {
       direction: "right",
     });
     expect(getSwipes(db, s.id, "cuisines").length).toBe(1);
+  });
+});
+
+describe("phase transitions", () => {
+  it("cuisine match advances to restaurants phase", () => {
+    const s = createSession(db);
+    const after = advanceOnMatch(db, { sessionId: s.id, phase: "cuisines", match: { id: "thai", name: "Thai" } });
+    expect(after.phase).toBe("restaurants");
+    expect(after.matchedCuisine).toBe("thai");
+  });
+  it("restaurant match advances to done with stored payload", () => {
+    const s = createSession(db);
+    advanceOnMatch(db, { sessionId: s.id, phase: "cuisines", match: { id: "thai", name: "Thai" } });
+    const restaurant = { id: "ChIJ1", name: "Spicy Thai", address: "...", phone: null, mapsUrl: "...", rating: 4.5, priceLevel: 2, photoUrl: null };
+    const after = advanceOnMatch(db, { sessionId: s.id, phase: "restaurants", match: restaurant });
+    expect(after.phase).toBe("done");
+    expect(JSON.parse(after.matchedRestaurantJson).name).toBe("Spicy Thai");
   });
 });

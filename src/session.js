@@ -56,3 +56,19 @@ export function getSwipes(db, sessionId, phase) {
     )
     .all(sessionId, phase);
 }
+
+export function advanceOnMatch(db, { sessionId, phase, match }) {
+  const t = now();
+  if (phase === "cuisines") {
+    db.prepare(
+      "UPDATE session SET phase=?, matched_cuisine=?, updated_at=? WHERE id=?",
+    ).run("restaurants", match.id, t, sessionId);
+  } else if (phase === "restaurants") {
+    db.prepare(
+      "UPDATE session SET phase=?, matched_restaurant_json=?, updated_at=? WHERE id=?",
+    ).run("done", JSON.stringify(match), t, sessionId);
+  } else {
+    throw new Error(`advanceOnMatch: unexpected phase ${phase}`);
+  }
+  return getSessionById(db, sessionId);
+}
