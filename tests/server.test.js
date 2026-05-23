@@ -37,3 +37,31 @@ describe('validateEnv', () => {
     })).toThrow(/HOME_LAT/);
   });
 });
+
+import { loadFavorites } from '../server.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+describe('loadFavorites', () => {
+  it('returns {} when neither source is set', () => {
+    expect(loadFavorites({ favoritesJson: null, favoritesFile: '/no/such/file.json' })).toEqual({});
+  });
+  it('prefers FAVORITES_JSON over file', () => {
+    const file = path.join(os.tmpdir(), `fav-${Date.now()}.json`);
+    fs.writeFileSync(file, JSON.stringify({ thai: ['FILE'] }));
+    const result = loadFavorites({ favoritesJson: '{"thai":["ENV"]}', favoritesFile: file });
+    expect(result.thai).toEqual(['ENV']);
+    fs.unlinkSync(file);
+  });
+  it('falls back to file when JSON is malformed', () => {
+    const file = path.join(os.tmpdir(), `fav-${Date.now()}.json`);
+    fs.writeFileSync(file, JSON.stringify({ thai: ['FILE'] }));
+    const result = loadFavorites({ favoritesJson: 'not json', favoritesFile: file });
+    expect(result.thai).toEqual(['FILE']);
+    fs.unlinkSync(file);
+  });
+  it('returns {} when JSON is malformed and no file', () => {
+    expect(loadFavorites({ favoritesJson: 'bad', favoritesFile: '/no/file' })).toEqual({});
+  });
+});

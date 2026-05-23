@@ -28,17 +28,27 @@ export function validateEnv(env) {
     dbPath: env.DB_PATH ?? '/data/fooder.db',
     sideNames: { a: env.SIDE_A_NAME ?? 'A', b: env.SIDE_B_NAME ?? 'B' },
     favoritesFile: env.FAVORITES_FILE ?? './favorites.json',
+    favoritesJson: env.FAVORITES_JSON ?? null,
   };
 }
 
-export function loadFavorites(filePath) {
-  if (!fs.existsSync(filePath)) return {};
+export function loadFavorites({ favoritesJson, favoritesFile }) {
+  if (favoritesJson) {
+    try {
+      const parsed = JSON.parse(favoritesJson);
+      if (parsed && typeof parsed === 'object') return parsed;
+      console.warn('FAVORITES_JSON is not a JSON object; ignoring');
+    } catch (err) {
+      console.warn(`FAVORITES_JSON is malformed: ${err.message}`);
+    }
+  }
+  if (!fs.existsSync(favoritesFile)) return {};
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const parsed = JSON.parse(fs.readFileSync(favoritesFile, 'utf8'));
     if (!parsed || typeof parsed !== 'object') return {};
     return parsed;
   } catch (err) {
-    console.warn(`favorites file ${filePath} is malformed: ${err.message}`);
+    console.warn(`favorites file ${favoritesFile} is malformed: ${err.message}`);
     return {};
   }
 }
@@ -46,7 +56,7 @@ export function loadFavorites(filePath) {
 function buildApp(cfg) {
   const db = openDb(cfg.dbPath);
   const hub = createSseHub();
-  const favorites = loadFavorites(cfg.favoritesFile);
+  const favorites = loadFavorites({ favoritesJson: cfg.favoritesJson, favoritesFile: cfg.favoritesFile });
   const places = makePlacesClient({
     db, fetch, apiKey: cfg.apiKey, home: cfg.home, radiusMeters: cfg.radiusMeters,
     now: Date.now, favorites,

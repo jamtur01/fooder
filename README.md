@@ -39,6 +39,7 @@ Open the app in two tabs — one per side. With default settings, that's http://
 | `SIDE_A_NAME` | no | `A` | Display name for side A (e.g. `James`). Becomes the URL slug. |
 | `SIDE_B_NAME` | no | `B` | Display name for side B (e.g. `Sarah`). |
 | `FAVORITES_FILE` | no | `./favorites.json` | Path to favorites JSON (see Favorites) |
+| `FAVORITES_JSON` | no | — | Favorites JSON inline (overrides `FAVORITES_FILE`). Convenient on Railway. |
 | `DB_PATH` | no | `/data/fooder.db` | SQLite database path. Locally, override to `./fooder.db`. |
 | `PORT` | no | `3000` | HTTP port. Railway sets this automatically. |
 
@@ -83,7 +84,7 @@ Pricing: ~$32 per 1000 Text Search calls, ~$17 per 1000 Place Details calls. Bot
 2. New Railway project from the repo. Nixpacks reads `engines` in `package.json` and provisions Node 24.
 3. Add a volume mounted at `/data` (so the SQLite db survives deploys).
 4. Set env vars in Railway's UI — at minimum `GOOGLE_PLACES_API_KEY`, `HOME_LAT`, `HOME_LNG`. Add `SIDE_A_NAME` / `SIDE_B_NAME` if you want named URLs.
-5. For favorites: commit `favorites.json` to the repo, or copy it to the `/data` volume and set `FAVORITES_FILE=/data/favorites.json`.
+5. For favorites on Railway, set the `FAVORITES_JSON` env var with the JSON content directly — e.g. `{"thai":["ChIJxxxx"],"middle-eastern":["ChIJyyyy"]}`. It takes precedence over `FAVORITES_FILE` and survives across deploys without needing a file in the repo or on the volume. (Don't commit `favorites.json` if the repo is public — the Place IDs reveal your usual spots.)
 6. `npm start` is wired in `railway.toml`; deploy.
 
 ## Architecture (one-liner per file)
