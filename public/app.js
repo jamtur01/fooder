@@ -21,6 +21,49 @@ function setStatus() {
   $('[data-partner]').textContent = `partner: ${state.partnerOnline ? 'online' : 'offline'}`;
 }
 
+function attachSwipe(stack) {
+  const cards = Array.from(stack.querySelectorAll('.card'));
+  if (cards.length === 0) return;
+  const top = cards[cards.length - 1];  // last in DOM = top of stack (we render reversed)
+  let startX = 0, dx = 0, dragging = false;
+
+  const threshold = window.innerWidth * 0.3;
+
+  top.addEventListener('pointerdown', (e) => {
+    dragging = true; startX = e.clientX; dx = 0;
+    top.setPointerCapture(e.pointerId);
+    top.style.transition = 'none';
+  });
+  top.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    dx = e.clientX - startX;
+    const rot = dx / 20;
+    top.style.transform = `translateX(${dx}px) rotate(${rot}deg)`;
+  });
+  top.addEventListener('pointerup', () => finish());
+  top.addEventListener('pointercancel', () => finish());
+
+  function finish() {
+    if (!dragging) return;
+    dragging = false;
+    top.style.transition = '';
+    if (Math.abs(dx) >= threshold) {
+      const direction = dx > 0 ? 'right' : 'left';
+      const fly = direction === 'right' ? window.innerWidth + 200 : -(window.innerWidth + 200);
+      top.style.transform = `translateX(${fly}px) rotate(${fly / 20}deg)`;
+      top.style.opacity = '0';
+      const itemId = top.dataset.itemId;
+      setTimeout(() => {
+        top.remove();
+        attachSwipe(stack);
+      }, 300);
+      window.__fooder.postSwipe(itemId, direction);
+    } else {
+      top.style.transform = '';
+    }
+  }
+}
+
 function renderDeck(target, items, renderCard) {
   const stack = target.querySelector('.card-stack');
   stack.innerHTML = '';
@@ -90,9 +133,11 @@ function applyState() {
 
   if (state.phase === 'cuisines') {
     renderDeck(views.cuisines, remaining, renderCuisineCard);
+    attachSwipe(views.cuisines.querySelector('.card-stack'));
     showView('cuisines');
   } else if (state.phase === 'restaurants') {
     renderDeck(views.restaurants, remaining, renderRestaurantCard);
+    attachSwipe(views.restaurants.querySelector('.card-stack'));
     showView('restaurants');
   }
 }
