@@ -1,12 +1,12 @@
 {
   "_comment": "Map of cuisine id -> array of Google Place IDs. Cuisine ids must match src/cuisines.js (e.g. 'thai', 'middle-eastern', 'chinese'). Get a Place ID from Google Maps: open the restaurant page, click 'Share', and the long string after place/ in the URL is its Place ID (starts with 'ChIJ'). Or use the Place ID Finder: https://developers.google.com/maps/documentation/places/web-service/place-id",
   "thai": [
-    "ChIJUav8AqxbwokRiMxGcbqw7nY_sky_ice"
+    "ChIJUav8AqxbwokRiMxGcbqw7nY"
   ],
   "middle-eastern": [
-    "ChIJLfDxQU1awokRwo7zD3fSqYE_bedouin_tent"
+    "ChIJLfDxQU1awokRwo7zD3fSqYE"
   ],
   "chinese": [
-    "ChIJ69-RqrRbwokR9WXMkzeKK1w_han_dynasty"
+    "ChIJ69-RqrRbwokR9WXMkzeKK1w"
   ]
 }
