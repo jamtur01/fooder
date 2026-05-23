@@ -25,6 +25,7 @@ export function validateEnv(env) {
     radiusMeters: num('SEARCH_RADIUS_METERS', env.SEARCH_RADIUS_METERS, 5000),
     port: num('PORT', env.PORT, 3000),
     dbPath: env.DB_PATH ?? '/data/fooder.db',
+    sideNames: { a: env.SIDE_A_NAME ?? 'A', b: env.SIDE_B_NAME ?? 'B' },
   };
 }
 
@@ -36,7 +37,7 @@ function buildApp(cfg) {
   });
   const app = express();
   app.use(express.json());
-  app.use(makeRouter({ db, places, hub }));
+  app.use(makeRouter({ db, places, hub, sideNames: cfg.sideNames }));
   return app;
 }
 

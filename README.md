@@ -13,7 +13,9 @@ Requires Node 24 (pinned via `.mise.toml`).
 
 `npm run dev` loads `.env` via Node's built-in `--env-file` flag.
 
-Open http://localhost:3000/a in one window and /b in another (use a separate browser profile or incognito so cookies don't collide).
+Open http://localhost:3000/a in one window/tab and /b in another. Each tab identifies its side from the URL path (and sends `?side=a|b` on every API call), so two tabs in the same browser work fine.
+
+Set `SIDE_A_NAME` and `SIDE_B_NAME` in `.env` to show real names in the status bar instead of "A" / "B".
 
 ## Tests
 

@@ -8,15 +8,19 @@ const views = {
   empty: $('#view-empty'),
 };
 
-let state = null;  // { phase, deck, mySwipes, matchedCuisine, matchedRestaurant, partnerOnline }
+const SIDE = location.pathname.endsWith('/b') ? 'b' : 'a';
+const Q = `?side=${SIDE}`;
+
+let state = null;  // { phase, deck, mySwipes, matchedCuisine, matchedRestaurant, partnerOnline, partnerName }
 
 function showView(name) {
   for (const [k, el] of Object.entries(views)) el.hidden = (k !== name);
 }
 
 function setStatus() {
-  $('[data-phase]').textContent = `phase: ${state.phase}`;
-  $('[data-partner]').textContent = `partner: ${state.partnerOnline ? 'online' : 'offline'}`;
+  $('[data-phase]').textContent = `${state.myName ?? SIDE.toUpperCase()} · ${state.phase}`;
+  const partner = state.partnerName ?? (SIDE === 'a' ? 'B' : 'A');
+  $('[data-partner]').textContent = `${partner}: ${state.partnerOnline ? 'online' : 'offline'}`;
 }
 
 function attachSwipe(stack) {
@@ -139,13 +143,13 @@ function applyState() {
 }
 
 async function fetchState() {
-  const res = await fetch('/api/state');
+  const res = await fetch(`/api/state${Q}`);
   state = await res.json();
   applyState();
 }
 
 function connectSse() {
-  const es = new EventSource('/api/events');
+  const es = new EventSource(`/api/events${Q}`);
   es.onmessage = (ev) => {
     const event = JSON.parse(ev.data);
     handleEvent(event);
@@ -154,6 +158,11 @@ function connectSse() {
 }
 
 async function handleEvent(event) {
+  if (!state) {
+    // SSE event raced ahead of the initial /api/state — refetch to catch up.
+    await fetchState();
+    return;
+  }
   if (event.type === 'partner-online') {
     state.partnerOnline = event.online;
     setStatus();
@@ -180,14 +189,14 @@ async function handleEvent(event) {
 }
 
 async function postSwipe(itemId, direction) {
-  await fetch('/api/swipe', {
+  await fetch(`/api/swipe${Q}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ itemId, direction }),
   });
 }
 
 async function postReset(scope) {
-  await fetch('/api/reset', {
+  await fetch(`/api/reset${Q}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scope }),
   });

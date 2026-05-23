@@ -17,6 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
 
 function sideOf(req) {
+  if (req.query?.side === 'a' || req.query?.side === 'b') return req.query.side;
   const cookies = parseCookie(req.headers.cookie ?? '');
   return cookies.side;
 }
@@ -24,7 +25,7 @@ function sideOf(req) {
 function requireSide(req, res, next) {
   const side = sideOf(req);
   if (side !== 'a' && side !== 'b') {
-    return res.status(400).json({ error: 'side cookie required (a or b)' });
+    return res.status(400).json({ error: 'side required (?side=a|b or cookie)' });
   }
   req.side = side;
   next();
@@ -46,7 +47,7 @@ async function buildDeck(places, session) {
 
 function cuisineById(id) { return CUISINES.find(c => c.id === id); }
 
-export function makeRouter({ db, places, hub }) {
+export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) {
   const router = express.Router();
 
   router.get('/', (req, res) => {
@@ -92,6 +93,9 @@ export function makeRouter({ db, places, hub }) {
       deck,
       mySwipes,
       partnerOnline,
+      mySide: req.side,
+      myName: sideNames[req.side],
+      partnerName: sideNames[req.side === 'a' ? 'b' : 'a'],
     });
   });
 
@@ -167,8 +171,9 @@ export function makeRouter({ db, places, hub }) {
     });
   });
 
+  // Photo proxy is stateless — no side required (frontend img tags can't send query params reliably anyway).
   // Express 5 dropped string wildcards; pass a RegExp instead.
-  router.get(/^\/api\/photo\/(.+)$/, requireSide, async (req, res) => {
+  router.get(/^\/api\/photo\/(.+)$/, async (req, res) => {
     const name = req.params[0];
     try {
       const { body, contentType } = await places.fetchPhoto(name);
