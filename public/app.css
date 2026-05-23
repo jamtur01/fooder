@@ -9,9 +9,10 @@ body { display: flex; flex-direction: column; }
   border-bottom: 1px solid #222;
 }
 
-#app { flex: 1; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+#app { flex: 1; display: flex; align-items: center; justify-content: center; padding: 1rem; overflow-y: auto; }
 .view { width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
 .view[hidden] { display: none; }
+#view-match { align-self: flex-start; padding-top: 1rem; }
 
 .card-stack { position: relative; width: 100%; height: 65vh; max-height: 600px; }
 .card {
@@ -32,9 +33,22 @@ body { display: flex; flex-direction: column; }
 
 .hint { color: #666; font-size: 0.85rem; }
 
-.match-card { text-align: center; display: flex; flex-direction: column; gap: 0.75rem; }
-.match-card img { width: 100%; max-width: 360px; border-radius: 1rem; }
-.match-card a { color: #6cf; }
+.match-card { text-align: center; display: flex; flex-direction: column; gap: 0.75rem; align-items: center; }
+.match-card img { width: 100%; max-width: 320px; max-height: 200px; object-fit: cover; border-radius: 1rem; }
+.match-card h1 { font-size: 2.25rem; margin: 0.5rem 0 0; line-height: 1.1; }
+.match-card .meta { color: #ccc; font-size: 1.1rem; }
+.match-card > div { font-size: 1rem; color: #ddd; }
+.match-card a { color: #6cf; font-weight: 500; text-decoration: none; }
+.match-card a:hover { text-decoration: underline; }
+
+#view-match .btn-primary {
+  margin-top: 1rem;
+  font-size: 1.1rem;
+  padding: 1rem 2.5rem;
+  font-weight: 600;
+  min-width: 220px;
+  box-shadow: 0 4px 16px rgba(76, 204, 255, 0.3);
+}
 
 .btn-primary, .btn-secondary {
   padding: 0.75rem 1.5rem; border-radius: 999px; border: 0; font-size: 1rem; cursor: pointer;
