@@ -6,7 +6,7 @@ export const CUISINES = [
   { id: 'mexican', name: 'Mexican', emoji: '🌮' },
   { id: 'indian', name: 'Indian', emoji: '🍛' },
   { id: 'chinese', name: 'Chinese', emoji: '🥡' },
-  { id: 'mediterranean', name: 'Mediterranean', emoji: '🥙' },
+  { id: 'middle-eastern', name: 'Middle Eastern', emoji: '🥙' },
   { id: 'korean', name: 'Korean', emoji: '🥘' },
   { id: 'vietnamese', name: 'Vietnamese', emoji: '🍲' },
   { id: 'ramen', name: 'Ramen', emoji: '🍥' },
