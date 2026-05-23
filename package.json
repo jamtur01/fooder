@@ -1,0 +1,26 @@
+{
+  "name": "fooder",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "22.x" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint .",
+    "format": "oxfmt ."
+  },
+  "dependencies": {
+    "express": "5.0.1",
+    "better-sqlite3": "11.5.0",
+    "cookie": "1.0.2"
+  },
+  "devDependencies": {
+    "vitest": "2.1.8",
+    "supertest": "7.0.0",
+    "oxlint": "0.13.0",
+    "oxfmt": "0.13.0"
+  }
+}
