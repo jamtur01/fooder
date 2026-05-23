@@ -6,6 +6,7 @@ import {
   getCurrentSession,
   getSwipes,
   advanceOnMatch,
+  isDeckExhausted,
 } from "../src/session.js";
 
 let db;
@@ -110,5 +111,26 @@ describe("phase transitions", () => {
     const after = advanceOnMatch(db, { sessionId: s.id, phase: "restaurants", match: restaurant });
     expect(after.phase).toBe("done");
     expect(JSON.parse(after.matchedRestaurantJson).name).toBe("Spicy Thai");
+  });
+});
+
+describe("isDeckExhausted", () => {
+  const deckIds = ["pizza", "thai", "sushi"];
+  it("false when no swipes yet", () => {
+    const s = createSession(db);
+    expect(isDeckExhausted(db, s.id, "cuisines", deckIds)).toBe(false);
+  });
+  it("false when only one side has finished", () => {
+    const s = createSession(db);
+    for (const id of deckIds) recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: id, direction: "left" });
+    expect(isDeckExhausted(db, s.id, "cuisines", deckIds)).toBe(false);
+  });
+  it("true when both sides have swiped every item with no mutual right", () => {
+    const s = createSession(db);
+    for (const id of deckIds) {
+      recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: id, direction: "left" });
+      recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: id, direction: "right" });
+    }
+    expect(isDeckExhausted(db, s.id, "cuisines", deckIds)).toBe(true);
   });
 });

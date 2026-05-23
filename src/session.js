@@ -72,3 +72,12 @@ export function advanceOnMatch(db, { sessionId, phase, match }) {
   }
   return getSessionById(db, sessionId);
 }
+
+export function isDeckExhausted(db, sessionId, phase, deckIds) {
+  const rows = db.prepare(
+    "SELECT side, item_id FROM swipe WHERE session_id=? AND phase=?",
+  ).all(sessionId, phase);
+  const aSwiped = new Set(rows.filter(r => r.side === "a").map(r => r.item_id));
+  const bSwiped = new Set(rows.filter(r => r.side === "b").map(r => r.item_id));
+  return deckIds.every(id => aSwiped.has(id) && bSwiped.has(id));
+}
