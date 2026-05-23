@@ -31,7 +31,18 @@ body { display: flex; flex-direction: column; }
 .card .rating { color: #fc0; }
 .card .meta { color: #aaa; font-size: 0.9rem; }
 
-.hint { color: #666; font-size: 0.85rem; }
+.hint {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0 0.5rem;
+}
+.hint-left { color: #f87171; }
+.hint-right { color: #4cf; }
+.deck-reset { margin-top: 0.25rem; }
 
 .match-card { text-align: center; display: flex; flex-direction: column; gap: 0.75rem; align-items: center; }
 .match-card img { width: 100%; max-width: 320px; max-height: 200px; object-fit: cover; border-radius: 1rem; }

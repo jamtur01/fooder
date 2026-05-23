@@ -14,11 +14,19 @@
   <main id="app">
     <section id="view-cuisines" class="view deck" hidden>
       <div class="card-stack" data-deck="cuisines"></div>
-      <div class="hint">swipe right for yes, left for no</div>
+      <div class="hint">
+        <span class="hint-left">← nope</span>
+        <span class="hint-right">yes →</span>
+      </div>
+      <button type="button" class="btn-secondary deck-reset" data-action="reset-session">Start over</button>
     </section>
     <section id="view-restaurants" class="view deck" hidden>
       <div class="card-stack" data-deck="restaurants"></div>
-      <div class="hint">swipe right for yes, left for no</div>
+      <div class="hint">
+        <span class="hint-left">← nope</span>
+        <span class="hint-right">yes →</span>
+      </div>
+      <button type="button" class="btn-secondary deck-reset" data-action="reset-session">Start over</button>
     </section>
     <section id="view-match" class="view" hidden>
       <div class="match-card" data-match></div>
