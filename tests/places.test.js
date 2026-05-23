@@ -135,3 +135,27 @@ describe('searchRestaurants — cache', () => {
     await expect(client.searchRestaurants('thai')).rejects.toThrow(/Places API/);
   });
 });
+
+describe('fetchPhoto', () => {
+  it('GETs Google place photo URL with key and returns body + content-type', async () => {
+    const buf = new Uint8Array([1,2,3,4]);
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'image/jpeg']]),
+      arrayBuffer: async () => buf.buffer,
+    });
+    const client = makePlacesClient({ db, fetch, apiKey: 'KEY', home: { lat: 0, lng: 0 }, radiusMeters: 5000, now: () => 1000 });
+    const { body, contentType } = await client.fetchPhoto('places/ChIJ1/photos/AbCd');
+    expect(fetch).toHaveBeenCalledOnce();
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe('https://places.googleapis.com/v1/places/ChIJ1/photos/AbCd/media?key=KEY&maxWidthPx=800');
+    expect(contentType).toBe('image/jpeg');
+    expect(Buffer.from(body)).toEqual(Buffer.from(buf));
+  });
+
+  it('rejects names without the places/.../photos/... shape', async () => {
+    const client = makePlacesClient({ db, fetch: vi.fn(), apiKey: 'KEY', home: { lat: 0, lng: 0 }, radiusMeters: 5000, now: () => 1000 });
+    await expect(client.fetchPhoto('../../etc/passwd')).rejects.toThrow();
+  });
+});

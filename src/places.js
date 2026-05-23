@@ -85,5 +85,17 @@ export function makePlacesClient({ db, fetch, apiKey, home, radiusMeters, now })
     }
   }
 
-  return { searchRestaurants };
+  const PHOTO_NAME_RE = /^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/;
+  async function fetchPhoto(name) {
+    if (!PHOTO_NAME_RE.test(name)) {
+      throw new Error('invalid photo name');
+    }
+    const url = `https://places.googleapis.com/v1/${name}/media?key=${encodeURIComponent(apiKey)}&maxWidthPx=800`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Photo fetch ${res.status}`);
+    const buf = await res.arrayBuffer();
+    return { body: buf, contentType: res.headers.get('content-type') ?? 'image/jpeg' };
+  }
+
+  return { searchRestaurants, fetchPhoto };
 }
