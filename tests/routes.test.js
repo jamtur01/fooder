@@ -84,3 +84,18 @@ describe('side routing', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('side routing with named sides', () => {
+  it('GET /james (slug of SIDE_A_NAME) serves index; /a 404s', async () => {
+    const { app: namedApp } = buildApp({ sideNames: { a: 'James', b: 'Sarah' } });
+    const ok = await request(namedApp).get('/james');
+    expect(ok.status).toBe(200);
+    const fail = await request(namedApp).get('/a');
+    expect(fail.status).toBe(404);
+  });
+  it('GET / redirects to slug, not bare letter', async () => {
+    const { app: namedApp } = buildApp({ sideNames: { a: 'James', b: 'Sarah' } });
+    const res = await request(namedApp).get('/');
+    expect(res.headers.location).toBe('/james');
+  });
+});

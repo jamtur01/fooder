@@ -48,10 +48,19 @@ function ensureSession(db) {
   return createSession(db);
 }
 
+async function restaurantsForCuisine(places, cuisine) {
+  const [favorites, search] = await Promise.all([
+    places.getFavorites(cuisine).catch(() => []),
+    places.searchRestaurants(cuisine).catch(() => []),
+  ]);
+  const seen = new Set(favorites.map(r => r.id));
+  return [...favorites, ...search.filter(r => !seen.has(r.id))];
+}
+
 async function buildDeck(places, session) {
   if (session.phase === 'cuisines') return CUISINES;
   if (session.phase === 'restaurants') {
-    return places.searchRestaurants(session.matchedCuisine);
+    return restaurantsForCuisine(places, session.matchedCuisine);
   }
   return [];
 }
@@ -62,8 +71,10 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
   const router = express.Router();
 
   const slugs = { a: slugify(sideNames.a), b: slugify(sideNames.b) };
+  if (slugs.a === slugs.b) {
+    throw new Error(`SIDE_A_NAME and SIDE_B_NAME slugify to the same value (${slugs.a})`);
+  }
   const sideBySlug = {
-    a: 'a', b: 'b',
     [slugs.a]: 'a',
     [slugs.b]: 'b',
   };
@@ -132,11 +143,11 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     if (session.phase === 'cuisines') {
       matchItem = cuisineById(itemId);
       advanceOnMatch(db, { sessionId: session.id, phase: 'cuisines', match: matchItem });
-      const restaurants = await places.searchRestaurants(itemId);
+      const restaurants = await restaurantsForCuisine(places, itemId);
       hub.broadcast({ type: 'match', phase: 'cuisines', item: matchItem });
       hub.broadcast({ type: 'phase-change', phase: 'restaurants', deck: restaurants });
     } else if (session.phase === 'restaurants') {
-      const restaurants = await places.searchRestaurants(session.matchedCuisine);
+      const restaurants = await restaurantsForCuisine(places, session.matchedCuisine);
       matchItem = restaurants.find(r => r.id === itemId);
       if (!matchItem) return res.status(404).json({ error: 'unknown restaurant' });
       advanceOnMatch(db, { sessionId: session.id, phase: 'restaurants', match: matchItem });
@@ -152,7 +163,7 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
       resetPhase(db, session.id, session.phase);
       let deck;
       if (session.phase === 'cuisines') deck = CUISINES;
-      else if (session.phase === 'restaurants') deck = await places.searchRestaurants(session.matchedCuisine);
+      else if (session.phase === 'restaurants') deck = await restaurantsForCuisine(places, session.matchedCuisine);
       else deck = [];
       hub.broadcast({ type: 'phase-reset', phase: session.phase, deck });
       return res.json({ ok: true });

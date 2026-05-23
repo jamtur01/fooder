@@ -1,4 +1,5 @@
 import express from 'express';
+import fs from 'node:fs';
 import { openDb } from './src/db.js';
 import { makePlacesClient } from './src/places.js';
 import { createSseHub } from './src/sse.js';
@@ -26,14 +27,29 @@ export function validateEnv(env) {
     port: num('PORT', env.PORT, 3000),
     dbPath: env.DB_PATH ?? '/data/fooder.db',
     sideNames: { a: env.SIDE_A_NAME ?? 'A', b: env.SIDE_B_NAME ?? 'B' },
+    favoritesFile: env.FAVORITES_FILE ?? './favorites.json',
   };
+}
+
+export function loadFavorites(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed;
+  } catch (err) {
+    console.warn(`favorites file ${filePath} is malformed: ${err.message}`);
+    return {};
+  }
 }
 
 function buildApp(cfg) {
   const db = openDb(cfg.dbPath);
   const hub = createSseHub();
+  const favorites = loadFavorites(cfg.favoritesFile);
   const places = makePlacesClient({
-    db, fetch, apiKey: cfg.apiKey, home: cfg.home, radiusMeters: cfg.radiusMeters, now: Date.now,
+    db, fetch, apiKey: cfg.apiKey, home: cfg.home, radiusMeters: cfg.radiusMeters,
+    now: Date.now, favorites,
   });
   const app = express();
   app.use(express.json());

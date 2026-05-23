@@ -34,7 +34,19 @@ function normalize(place) {
   };
 }
 
-export function makePlacesClient({ db, fetch, apiKey, home, radiusMeters, now }) {
+const PLACE_URL = 'https://places.googleapis.com/v1/places/';
+const PLACE_FIELD_MASK = [
+  'id',
+  'displayName',
+  'formattedAddress',
+  'rating',
+  'priceLevel',
+  'nationalPhoneNumber',
+  'googleMapsUri',
+  'photos',
+].join(',');
+
+export function makePlacesClient({ db, fetch, apiKey, home, radiusMeters, now, favorites = {} }) {
   const locationKey = `${home.lat},${home.lng}`;
 
   function readCache(cuisine) {
@@ -47,6 +59,48 @@ export function makePlacesClient({ db, fetch, apiKey, home, radiusMeters, now })
     db.prepare(
       'INSERT OR REPLACE INTO restaurant_cache(cuisine, location, payload_json, fetched_at) VALUES (?,?,?,?)'
     ).run(cuisine, locationKey, JSON.stringify(payload), now());
+  }
+
+  function readPlaceCache(placeId) {
+    return db.prepare(
+      'SELECT payload_json, fetched_at FROM place_cache WHERE place_id=?'
+    ).get(placeId);
+  }
+
+  function writePlaceCache(placeId, payload) {
+    db.prepare(
+      'INSERT OR REPLACE INTO place_cache(place_id, payload_json, fetched_at) VALUES (?,?,?)'
+    ).run(placeId, JSON.stringify(payload), now());
+  }
+
+  async function fetchPlace(placeId) {
+    const cached = readPlaceCache(placeId);
+    if (cached && now() - cached.fetched_at < TTL_MS) {
+      return JSON.parse(cached.payload_json);
+    }
+    try {
+      const res = await fetch(PLACE_URL + encodeURIComponent(placeId), {
+        method: 'GET',
+        headers: {
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': PLACE_FIELD_MASK,
+        },
+      });
+      if (!res.ok) throw new Error(`Places API ${res.status}`);
+      const place = normalize(await res.json());
+      writePlaceCache(placeId, place);
+      return place;
+    } catch (err) {
+      if (cached) return JSON.parse(cached.payload_json);
+      throw err;
+    }
+  }
+
+  async function getFavorites(cuisine) {
+    const ids = favorites[cuisine] ?? [];
+    if (ids.length === 0) return [];
+    const results = await Promise.all(ids.map(id => fetchPlace(id).catch(() => null)));
+    return results.filter(Boolean);
   }
 
   async function callApi(cuisine) {
@@ -97,5 +151,5 @@ export function makePlacesClient({ db, fetch, apiKey, home, radiusMeters, now })
     return { body: buf, contentType: res.headers.get('content-type') ?? 'image/jpeg' };
   }
 
-  return { searchRestaurants, fetchPhoto };
+  return { searchRestaurants, fetchPhoto, fetchPlace, getFavorites };
 }

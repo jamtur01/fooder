@@ -15,7 +15,23 @@ Requires Node 24 (pinned via `.mise.toml`).
 
 Open http://localhost:3000/a in one window/tab and /b in another. Two tabs in the same browser work fine — each page bakes its side into the HTML and sends `?side=a|b` on every API call.
 
-Set `SIDE_A_NAME` and `SIDE_B_NAME` in `.env` to use real names. With `SIDE_A_NAME=James`, `/` redirects to `/james` and you can open `/sarah` for the other side. `/a` and `/b` still work as canonical aliases.
+Set `SIDE_A_NAME` and `SIDE_B_NAME` in `.env` to use real names. With `SIDE_A_NAME=James`, `/` redirects to `/james` and you open `/sarah` for the other side. When names are set, the bare `/a` and `/b` paths 404 — only the slugs work.
+
+## Favorites
+
+Pre-load go-to restaurants per cuisine so they show first in the restaurant deck. Create `favorites.json` (path configurable via `FAVORITES_FILE`):
+
+    {
+      "thai": ["ChIJxxxx..."],
+      "middle-eastern": ["ChIJyyyy..."],
+      "chinese": ["ChIJzzzz..."]
+    }
+
+Each value is a Google Place ID. Grab one by opening the restaurant on Google Maps → Share → look for `place/...` in the URL (or use the [Place ID Finder](https://developers.google.com/maps/documentation/places/web-service/place-id)). Cuisine ids must match the ones in `src/cuisines.js` (e.g. `thai`, `middle-eastern`, `chinese`, `pizza`, ...).
+
+On a cuisine match, favorites for that cuisine appear at the top of the restaurant deck, followed by Google Places search results (deduped). One Google "Place Details" API call per favorite, cached 24h.
+
+See `favorites.example.json`.
 
 ## Tests
 

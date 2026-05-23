@@ -10,6 +10,8 @@ const restaurants = [
 const placesOverride = {
   searchRestaurants: async () => restaurants,
   fetchPhoto: async () => ({ body: new ArrayBuffer(0), contentType: 'image/jpeg' }),
+  fetchPlace: async (id) => restaurants.find(r => r.id === id) ?? null,
+  getFavorites: async () => [],
 };
 
 let app, db;

@@ -159,3 +159,58 @@ describe('fetchPhoto', () => {
     await expect(client.fetchPhoto('../../etc/passwd')).rejects.toThrow();
   });
 });
+
+describe('getFavorites + fetchPlace', () => {
+  const placePayload = (id) => ({
+    ok: true, status: 200,
+    json: async () => ({ id, displayName: { text: 'Fav ' + id }, formattedAddress: 'addr ' + id }),
+  });
+
+  it('getFavorites returns [] when no favorites configured for cuisine', async () => {
+    const client = makePlacesClient({
+      db, fetch: vi.fn(), apiKey: 'K', home: { lat: 0, lng: 0 },
+      radiusMeters: 5000, now: () => 1, favorites: {},
+    });
+    expect(await client.getFavorites('thai')).toEqual([]);
+  });
+
+  it('getFavorites fetches each Place ID and returns enriched objects', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(placePayload('ChIJX'))
+      .mockResolvedValueOnce(placePayload('ChIJY'));
+    const client = makePlacesClient({
+      db, fetch, apiKey: 'K', home: { lat: 0, lng: 0 }, radiusMeters: 5000,
+      now: () => 1, favorites: { thai: ['ChIJX', 'ChIJY'] },
+    });
+    const result = await client.getFavorites('thai');
+    expect(result.map(r => r.id)).toEqual(['ChIJX', 'ChIJY']);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][0]).toBe('https://places.googleapis.com/v1/places/ChIJX');
+    expect(fetch.mock.calls[0][1].headers['X-Goog-Api-Key']).toBe('K');
+    expect(fetch.mock.calls[0][1].headers['X-Goog-FieldMask']).toContain('displayName');
+  });
+
+  it('fetchPlace caches result within TTL', async () => {
+    const fetch = vi.fn().mockResolvedValue(placePayload('ChIJZ'));
+    const client = makePlacesClient({
+      db, fetch, apiKey: 'K', home: { lat: 0, lng: 0 }, radiusMeters: 5000,
+      now: () => 1000, favorites: {},
+    });
+    await client.fetchPlace('ChIJZ');
+    fetch.mockClear();
+    await client.fetchPlace('ChIJZ');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('getFavorites skips entries whose fetch fails', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(placePayload('GOOD'))
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
+    const client = makePlacesClient({
+      db, fetch, apiKey: 'K', home: { lat: 0, lng: 0 }, radiusMeters: 5000,
+      now: () => 1, favorites: { thai: ['GOOD', 'BAD'] },
+    });
+    const result = await client.getFavorites('thai');
+    expect(result.map(r => r.id)).toEqual(['GOOD']);
+  });
+});

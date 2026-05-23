@@ -7,7 +7,7 @@ describe('openDb', () => {
     const tables = db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
     ).all().map(r => r.name);
-    expect(tables).toEqual(['restaurant_cache', 'session', 'swipe']);
+    expect(tables).toEqual(['place_cache', 'restaurant_cache', 'session', 'swipe']);
   });
 
   it('enforces phase check constraint on session', () => {

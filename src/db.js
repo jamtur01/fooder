@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS restaurant_cache (
   PRIMARY KEY (cuisine, location)
 );
 
+CREATE TABLE IF NOT EXISTS place_cache (
+  place_id TEXT PRIMARY KEY,
+  payload_json TEXT NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_swipe_session ON swipe(session_id, phase);
 `;
 
