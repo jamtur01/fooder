@@ -80,6 +80,10 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     [slugs.b]: 'b',
   };
 
+  router.get('/healthz', (_req, res) => {
+    res.json({ ok: true });
+  });
+
   router.get('/', (req, res) => {
     const cookies = parseCookie(req.headers.cookie ?? '');
     const side = cookies.side === 'b' ? 'b' : 'a';
