@@ -99,7 +99,14 @@ export function makePlacesClient({ db, fetch, apiKey, home, radiusMeters, now, f
   async function getFavorites(cuisine) {
     const ids = favorites[cuisine] ?? [];
     if (ids.length === 0) return [];
-    const results = await Promise.all(ids.map(id => fetchPlace(id).catch(() => null)));
+    const results = await Promise.all(ids.map(async (id) => {
+      try {
+        return await fetchPlace(id);
+      } catch (err) {
+        console.warn(`favorites: failed to fetch place ${id} for cuisine ${cuisine}: ${err.message}`);
+        return null;
+      }
+    }));
     return results.filter(Boolean);
   }
 

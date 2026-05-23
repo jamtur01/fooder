@@ -57,6 +57,15 @@ function buildApp(cfg) {
   const db = openDb(cfg.dbPath);
   const hub = createSseHub();
   const favorites = loadFavorites({ favoritesJson: cfg.favoritesJson, favoritesFile: cfg.favoritesFile });
+  const cuisineCount = Object.keys(favorites).length;
+  if (cuisineCount === 0) {
+    console.log('favorites: none configured (FAVORITES_JSON or FAVORITES_FILE)');
+  } else {
+    const summary = Object.entries(favorites)
+      .map(([c, ids]) => `${c}=${Array.isArray(ids) ? ids.length : '?'}`)
+      .join(', ');
+    console.log(`favorites: loaded ${cuisineCount} cuisines (${summary})`);
+  }
   const places = makePlacesClient({
     db, fetch, apiKey: cfg.apiKey, home: cfg.home, radiusMeters: cfg.radiusMeters,
     now: Date.now, favorites,
