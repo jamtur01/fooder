@@ -16,15 +16,16 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
-const INDEX_HTML = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8');
+const INDEX_PATH = path.join(PUBLIC_DIR, 'index.html');
 
 function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
 }
 
 function renderIndex(side, sideNames) {
+  const html = fs.readFileSync(INDEX_PATH, 'utf8');
   const inject = `<script>window.MY_SIDE=${JSON.stringify(side)};window.SIDE_NAMES=${JSON.stringify(sideNames)};</script>`;
-  return INDEX_HTML.replace('<!--SIDE-->', inject);
+  return html.replace('<!--SIDE-->', inject);
 }
 
 function sideOf(req) {
