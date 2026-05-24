@@ -12,7 +12,11 @@ import {
   advanceOnMatch,
   resetPhase,
   resetSession,
+  bothDoneSwipingCuisines,
+  computeCuisineOverlap,
+  setCuisineStage,
 } from './session.js';
+import { createRound, getCurrentPair } from './bracket.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
@@ -68,6 +72,40 @@ async function buildDeck(places, session) {
 
 function cuisineById(id) { return CUISINES.find(c => c.id === id); }
 
+async function transitionFromSwipeToBracket({
+  db, session, places, hub, CUISINES: cuisineList, cuisineById: byId, advanceOnMatch: advance,
+  restaurantsForCuisine: restaurants,
+}) {
+  const overlap = computeCuisineOverlap(db, session.id, cuisineList.map(c => c.id));
+  if (overlap.length === 0) {
+    hub.broadcast({ type: 'stage-change', stage: 'no-overlap' });
+    return;
+  }
+  if (overlap.length === 1) {
+    const matched = byId(overlap[0]);
+    advance(db, { sessionId: session.id, phase: 'cuisines', match: matched });
+    const restaurantList = await restaurants(places, matched.id);
+    hub.broadcast({ type: 'match', phase: 'cuisines', item: matched });
+    hub.broadcast({ type: 'phase-change', phase: 'restaurants', deck: restaurantList });
+    return;
+  }
+  createRound(db, session.id, 0, overlap);
+  setCuisineStage(db, session.id, 'bracket');
+  const cur = getCurrentPair(db, session.id);
+  hub.broadcast({
+    type: 'stage-change',
+    stage: 'bracket',
+    bracket: {
+      roundIndex: cur.roundIndex,
+      currentPair: {
+        pairIndex: cur.pairIndex,
+        a: byId(cur.itemA),
+        b: cur.itemB ? byId(cur.itemB) : null,
+      },
+    },
+  });
+}
+
 export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) {
   const router = express.Router();
 
@@ -112,14 +150,41 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     const session = ensureSession(db);
     const deck = await buildDeck(places, session);
     const mySwipes = getSwipes(db, session.id, session.phase).filter(s => s.side === req.side);
-    const partnerOnline = hub.isOnline(req.side === 'a' ? 'b' : 'a');
+
+    let stage = null;
+    let bracket = null;
+    let partnerDone = false;
+
+    if (session.phase === 'cuisines') {
+      stage = session.cuisineStage;
+      const otherSide = req.side === 'a' ? 'b' : 'a';
+      const otherSwipes = getSwipes(db, session.id, 'cuisines').filter(s => s.side === otherSide);
+      partnerDone = otherSwipes.length >= CUISINES.length;
+      if (stage === 'bracket') {
+        const cur = getCurrentPair(db, session.id);
+        const myVoteRow = cur ? db.prepare(
+          'SELECT pick FROM bracket_vote WHERE session_id=? AND round_index=? AND pair_index=? AND side=?'
+        ).get(session.id, cur.roundIndex, cur.pairIndex, req.side) : null;
+        bracket = {
+          roundIndex: cur ? cur.roundIndex : 0,
+          currentPair: cur
+            ? { pairIndex: cur.pairIndex, a: cuisineById(cur.itemA), b: cur.itemB ? cuisineById(cur.itemB) : null }
+            : null,
+          myVote: myVoteRow?.pick ?? null,
+        };
+      }
+    }
+
     res.json({
       phase: session.phase,
+      stage,
       matchedCuisine: session.matchedCuisine,
       matchedRestaurant: session.matchedRestaurantJson ? JSON.parse(session.matchedRestaurantJson) : null,
       deck,
       mySwipes,
-      partnerOnline,
+      partnerOnline: hub.isOnline(req.side === 'a' ? 'b' : 'a'),
+      partnerDone,
+      bracket,
       mySide: req.side,
       myName: sideNames[req.side],
       partnerName: sideNames[req.side === 'a' ? 'b' : 'a'],
@@ -135,29 +200,39 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
       return res.status(400).json({ error: 'itemId required' });
     }
     const session = ensureSession(db);
-    const result = recordSwipe(db, {
-      sessionId: session.id,
-      side: req.side,
-      phase: session.phase,
-      itemId,
-      direction,
-    });
-    if (!result.matched) return res.json({ matched: false });
 
-    let matchItem;
-    if (session.phase === 'cuisines') {
-      matchItem = cuisineById(itemId);
-      advanceOnMatch(db, { sessionId: session.id, phase: 'cuisines', match: matchItem });
-      const restaurants = await restaurantsForCuisine(places, itemId);
-      hub.broadcast({ type: 'match', phase: 'cuisines', item: matchItem });
-      hub.broadcast({ type: 'phase-change', phase: 'restaurants', deck: restaurants });
-    } else if (session.phase === 'restaurants') {
-      const restaurants = await restaurantsForCuisine(places, session.matchedCuisine);
-      matchItem = restaurants.find(r => r.id === itemId);
-      if (!matchItem) return res.status(404).json({ error: 'unknown restaurant' });
-      advanceOnMatch(db, { sessionId: session.id, phase: 'restaurants', match: matchItem });
-      hub.broadcast({ type: 'match', phase: 'restaurants', item: matchItem });
+    if (session.phase === 'cuisines' && session.cuisineStage === 'bracket') {
+      return res.status(400).json({ error: 'cannot swipe during bracket stage; use /api/bracket-vote' });
     }
+
+    const result = recordSwipe(db, {
+      sessionId: session.id, side: req.side, phase: session.phase, itemId, direction,
+    });
+
+    if (session.phase === 'cuisines') {
+      const mineCount = getSwipes(db, session.id, 'cuisines').filter(s => s.side === req.side).length;
+      if (mineCount === CUISINES.length) {
+        hub.broadcast({ type: 'partner-done', side: req.side, swipedCount: mineCount });
+      }
+      if (bothDoneSwipingCuisines(db, session.id, CUISINES.map(c => c.id))) {
+        await transitionFromSwipeToBracket({
+          db, session, places, hub,
+          CUISINES,
+          cuisineById,
+          advanceOnMatch,
+          restaurantsForCuisine,
+        });
+      }
+      return res.json({ matched: false });
+    }
+
+    // restaurants phase
+    if (!result.matched) return res.json({ matched: false });
+    const restaurants = await restaurantsForCuisine(places, session.matchedCuisine);
+    const matchItem = restaurants.find(r => r.id === itemId);
+    if (!matchItem) return res.status(404).json({ error: 'unknown restaurant' });
+    advanceOnMatch(db, { sessionId: session.id, phase: 'restaurants', match: matchItem });
+    hub.broadcast({ type: 'match', phase: 'restaurants', item: matchItem });
     res.json({ matched: true });
   });
 

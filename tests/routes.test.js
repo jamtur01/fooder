@@ -6,15 +6,25 @@ let app, db;
 beforeEach(() => { ({ app, db } = buildApp()); });
 
 describe('GET /api/state', () => {
-  it('auto-creates a session on first request and returns cuisine deck', async () => {
+  it('returns the cuisines deck with stage=swipe, partnerDone=false, bracket=null', async () => {
     const res = await request(app).get('/api/state').set('Cookie', 'side=a');
     expect(res.status).toBe(200);
     expect(res.body.phase).toBe('cuisines');
+    expect(res.body.stage).toBe('swipe');
     expect(res.body.deck.length).toBeGreaterThan(0);
-    expect(res.body.deck[0]).toHaveProperty('id');
-    expect(res.body.mySwipes).toEqual([]);
-    expect(res.body.partnerOnline).toBe(false);
+    expect(res.body.partnerDone).toBe(false);
+    expect(res.body.bracket).toBeNull();
   });
+
+  it('returns partnerDone=true once the other side has swiped every cuisine', async () => {
+    const { CUISINES } = await import('../src/cuisines.js');
+    for (const c of CUISINES) {
+      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: 'left' });
+    }
+    const res = await request(app).get('/api/state').set('Cookie', 'side=a');
+    expect(res.body.partnerDone).toBe(true);
+  });
+
   it('returns 400 without side cookie', async () => {
     const res = await request(app).get('/api/state');
     expect(res.status).toBe(400);
@@ -22,23 +32,52 @@ describe('GET /api/state', () => {
 });
 
 describe('POST /api/swipe', () => {
-  it('records swipe and returns matched:false on first side', async () => {
+  it('records swipe and returns matched:false on first side (cuisines)', async () => {
     const res = await request(app).post('/api/swipe').set('Cookie', 'side=a')
       .send({ itemId: 'thai', direction: 'right' });
     expect(res.status).toBe(200);
     expect(res.body.matched).toBe(false);
   });
-  it('emits match SSE and advances phase when both swipe right', async () => {
+
+  it('cuisines phase no longer instant-matches when both right-swipe same item', async () => {
     await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'right' });
     const res = await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'thai', direction: 'right' });
-    expect(res.body.matched).toBe(true);
+    expect(res.body.matched).toBe(false);
+    const row = db.prepare('SELECT phase, cuisine_stage FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('cuisines');
+    expect(row.cuisine_stage).toBe('swipe');
+  });
+
+  it('rejects invalid direction', async () => {
+    const res = await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'sideways' });
+    expect(res.status).toBe(400);
+  });
+
+  it('1 overlap → both done → server advances directly to restaurants', async () => {
+    const { CUISINES } = await import('../src/cuisines.js');
+    // Both right-swipe ONLY thai; left on the rest.
+    for (const c of CUISINES) {
+      const dir = c.id === 'thai' ? 'right' : 'left';
+      await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+    }
     const row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
     expect(row.phase).toBe('restaurants');
     expect(row.matched_cuisine).toBe('thai');
   });
-  it('rejects invalid direction', async () => {
-    const res = await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'sideways' });
-    expect(res.status).toBe(400);
+
+  it('2+ overlap → both done → server creates bracket round 0', async () => {
+    const { CUISINES } = await import('../src/cuisines.js');
+    const overlap = new Set(['thai', 'pizza']);
+    for (const c of CUISINES) {
+      const dir = overlap.has(c.id) ? 'right' : 'left';
+      await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+    }
+    const row = db.prepare('SELECT phase, cuisine_stage FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('cuisines');
+    expect(row.cuisine_stage).toBe('bracket');
+    expect(db.prepare('SELECT COUNT(*) AS n FROM bracket_round').get().n).toBeGreaterThan(0);
   });
 });
 
