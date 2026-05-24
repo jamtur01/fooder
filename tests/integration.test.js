@@ -17,46 +17,78 @@ const placesOverride = {
 let app, db;
 beforeEach(() => { ({ app, db } = buildApp({ placesOverride })); });
 
-async function swipe(side, itemId, direction) {
-  return request(app).post('/api/swipe').set('Cookie', `side=${side}`).send({ itemId, direction });
-}
+describe('full flow — cuisine bracket', () => {
+  async function swipeAll(side, swipes) {
+    for (const [itemId, direction] of swipes) {
+      await request(app).post('/api/swipe').set('Cookie', `side=${side}`).send({ itemId, direction });
+    }
+  }
+  async function swipeAllCuisines(side, rightItems) {
+    const { CUISINES } = await import('../src/cuisines.js');
+    const swipes = CUISINES.map(c => [c.id, rightItems.includes(c.id) ? 'right' : 'left']);
+    await swipeAll(side, swipes);
+  }
 
-describe('full flow', () => {
-  it('cuisine match → restaurant match → done', async () => {
-    // Both connect
-    await request(app).get('/api/state').set('Cookie', 'side=a');
-    await request(app).get('/api/state').set('Cookie', 'side=b');
-
-    // Phase 1: A swipes left on pizza, right on thai. B swipes right on thai.
-    await swipe('a', 'pizza', 'left');
-    await swipe('a', 'thai', 'right');
-    const m1 = await swipe('b', 'thai', 'right');
-    expect(m1.body.matched).toBe(true);
-
-    // Session should be in restaurants phase with matched_cuisine=thai
-    const session = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
-    expect(session.phase).toBe('restaurants');
-    expect(session.matched_cuisine).toBe('thai');
-
-    // Phase 2: A swipes left on ChIJ1, right on ChIJ2. B swipes right on ChIJ2.
-    await swipe('a', 'ChIJ1', 'left');
-    await swipe('a', 'ChIJ2', 'right');
-    const m2 = await swipe('b', 'ChIJ2', 'right');
-    expect(m2.body.matched).toBe(true);
-
-    const final = db.prepare('SELECT phase, matched_restaurant_json FROM session ORDER BY id DESC LIMIT 1').get();
-    expect(final.phase).toBe('done');
-    expect(JSON.parse(final.matched_restaurant_json).name).toBe('Thai Two');
+  it('0 overlap → stays in cuisines/swipe (server broadcast no-overlap)', async () => {
+    await swipeAllCuisines('a', ['thai']);
+    await swipeAllCuisines('b', ['pizza']);
+    const row = db.prepare('SELECT phase, cuisine_stage FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('cuisines');
+    expect(row.cuisine_stage).toBe('swipe');
   });
 
-  it('GET /api/state after match returns the matched restaurant', async () => {
-    await request(app).get('/api/state').set('Cookie', 'side=a');
-    await swipe('a', 'thai', 'right');
-    await swipe('b', 'thai', 'right');
-    await swipe('a', 'ChIJ1', 'right');
-    await swipe('b', 'ChIJ1', 'right');
-    const res = await request(app).get('/api/state').set('Cookie', 'side=a');
-    expect(res.body.phase).toBe('done');
-    expect(res.body.matchedRestaurant.name).toBe('Spicy Thai');
+  it('1 overlap → advances directly to restaurants', async () => {
+    await swipeAllCuisines('a', ['thai']);
+    await swipeAllCuisines('b', ['thai']);
+    const row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('restaurants');
+    expect(row.matched_cuisine).toBe('thai');
+  });
+
+  it('3 overlap with a tie advances through multiple rounds into restaurants', async () => {
+    await swipeAllCuisines('a', ['pizza', 'thai', 'japanese']);
+    await swipeAllCuisines('b', ['pizza', 'thai', 'japanese']);
+    let row = db.prepare('SELECT cuisine_stage FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.cuisine_stage).toBe('bracket');
+
+    // Round 0: pairs (pizza, thai), (japanese bye). Tie on pair 0 → both advance.
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'thai' });
+
+    // Round 1: survivors [pizza, thai, japanese] → pairs (pizza, thai), (japanese bye).
+    // Both pick pizza → pizza wins.
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
+
+    // Round 2: survivors [pizza, japanese]. Both pick pizza → bracket done.
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
+
+    row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('restaurants');
+    expect(row.matched_cuisine).toBe('pizza');
+  });
+
+  it('3-overlap bracket then restaurant match completes the full flow', async () => {
+    await swipeAllCuisines('a', ['pizza', 'thai', 'japanese']);
+    await swipeAllCuisines('b', ['pizza', 'thai', 'japanese']);
+    // Vote pizza all the way (single-side preferred): A picks pizza, B picks pizza for each round.
+    // Round 0 pair 0 (pizza, thai): pizza wins
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
+    // Round 1 survivors [pizza, japanese] → pair 0 (pizza, japanese): pizza wins → bracket done
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
+
+    let row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('restaurants');
+
+    // Restaurants flow: instant match. placesOverride returns [ChIJ1, ChIJ2].
+    await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'ChIJ1', direction: 'right' });
+    const res = await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'right' });
+    expect(res.body.matched).toBe(true);
+    row = db.prepare('SELECT phase, matched_restaurant_json FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('done');
+    expect(JSON.parse(row.matched_restaurant_json).name).toBe('Spicy Thai');
   });
 });
