@@ -29,7 +29,7 @@ Open the app in two tabs — one per side. With default settings, that's http://
 
     npm test
 
-58 tests across the db, session machine, places client, SSE hub, routes, and a full end-to-end integration. All run in-memory.
+99 tests across the db, session machine, bracket logic, places client, SSE hub, routes, and a full end-to-end integration. All run in-memory.
 
 ## Environment variables
 
@@ -67,7 +67,7 @@ Pre-load go-to restaurants per cuisine so they appear first in the restaurant de
       "chinese": ["ChIJzzzz..."]
     }
 
-Each value is a Google Place ID. Get one from the [Place ID Finder](https://developers.google.com/maps/documentation/places/web-service/place-id). Cuisine ids must match those in `src/cuisines.js` (`pizza`, `thai`, `sushi`, `burgers`, `mexican`, `indian`, `chinese`, `middle-eastern`, `korean`, `vietnamese`, `ramen`, `italian`, `bbq`, `sandwiches`, `salad`).
+Each value is a Google Place ID. Get one from the [Place ID Finder](https://developers.google.com/maps/documentation/places/web-service/place-id). Cuisine ids must match those in `src/cuisines.js` (`pizza`, `thai`, `japanese`, `burgers`, `mexican`, `indian`, `chinese`, `middle-eastern`, `korean`, `vietnamese`, `ramen`, `italian`, `ethiopian`, `sandwiches`, `salad`).
 
 On a cuisine match, favorites for that cuisine are fetched (one Google "Place Details" call per favorite, cached 24h) and prepended to the deck before the Google Places search results. Duplicates are filtered out by Place ID.
 
@@ -93,12 +93,13 @@ Pricing: ~$32 per 1000 Text Search calls, ~$17 per 1000 Place Details calls. Bot
 ## Architecture (one-liner per file)
 
 - `server.js` — entry: env validation, app composition, listen
-- `src/db.js` — SQLite schema (sessions, swipes, restaurant cache, place cache)
+- `src/db.js` — SQLite schema (sessions, swipes, restaurant cache, place cache, bracket rounds/votes) + migration helper
 - `src/cuisines.js` — hardcoded cuisine deck
-- `src/session.js` — session/swipe state machine: match detection, phase transitions, resets
+- `src/session.js` — session/swipe state machine: cuisine overlap, restaurant match, phase transitions, resets, cuisine-stage helpers
+- `src/bracket.js` — cuisine bracket: pairing, votes, round resolution, loop-break
 - `src/places.js` — Google Places client: searchText, place details, photo proxy, 24h caches
 - `src/sse.js` — connection hub: register/unregister, broadcast, online tracking
-- `src/routes.js` — Express routes for `/api/*`, slugged side serving, photo proxy
+- `src/routes.js` — Express routes for `/api/*`, slugged side serving, photo proxy, bracket-vote
 - `public/` — vanilla HTML/CSS/JS frontend, no build step
 
 ## License
