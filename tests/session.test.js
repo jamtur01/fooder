@@ -9,6 +9,10 @@ import {
   isDeckExhausted,
   resetPhase,
   resetSession,
+  bothDoneSwipingCuisines,
+  computeCuisineOverlap,
+  setCuisineStage,
+  getSessionById,
 } from "../src/session.js";
 
 let db;
@@ -21,6 +25,7 @@ describe("session creation", () => {
     const s = createSession(db);
     expect(s.id).toBeGreaterThan(0);
     expect(s.phase).toBe("cuisines");
+    expect(s.cuisineStage).toBe("swipe");
     expect(s.matchedCuisine).toBeNull();
   });
   it("getCurrentSession returns the most recent session", () => {
@@ -30,72 +35,22 @@ describe("session creation", () => {
   });
 });
 
-describe("recordSwipe + match detection (cuisines)", () => {
-  it("returns matched:false on a single side swipe", () => {
+describe("recordSwipe — cuisines phase no longer reports instant match", () => {
+  it("returns matched:false even when both sides right-swipe the same cuisine", () => {
     const s = createSession(db);
-    const result = recordSwipe(db, {
-      sessionId: s.id,
-      side: "a",
-      phase: "cuisines",
-      itemId: "thai",
-      direction: "right",
-    });
+    recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: "thai", direction: "right" });
+    const result = recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: "thai", direction: "right" });
     expect(result.matched).toBe(false);
   });
-  it("returns matched:true when both sides swipe right on the same item", () => {
+});
+
+describe("recordSwipe — restaurants phase still reports instant match", () => {
+  it("returns matched:true when both right-swipe the same restaurant", () => {
     const s = createSession(db);
-    recordSwipe(db, {
-      sessionId: s.id,
-      side: "a",
-      phase: "cuisines",
-      itemId: "thai",
-      direction: "right",
-    });
-    const result = recordSwipe(db, {
-      sessionId: s.id,
-      side: "b",
-      phase: "cuisines",
-      itemId: "thai",
-      direction: "right",
-    });
+    recordSwipe(db, { sessionId: s.id, side: "a", phase: "restaurants", itemId: "ChIJ1", direction: "right" });
+    const result = recordSwipe(db, { sessionId: s.id, side: "b", phase: "restaurants", itemId: "ChIJ1", direction: "right" });
     expect(result.matched).toBe(true);
-    expect(result.itemId).toBe("thai");
-  });
-  it("no match when one side swipes left", () => {
-    const s = createSession(db);
-    recordSwipe(db, {
-      sessionId: s.id,
-      side: "a",
-      phase: "cuisines",
-      itemId: "thai",
-      direction: "right",
-    });
-    const result = recordSwipe(db, {
-      sessionId: s.id,
-      side: "b",
-      phase: "cuisines",
-      itemId: "thai",
-      direction: "left",
-    });
-    expect(result.matched).toBe(false);
-  });
-  it("idempotent: repeated swipe is a no-op for match detection", () => {
-    const s = createSession(db);
-    recordSwipe(db, {
-      sessionId: s.id,
-      side: "a",
-      phase: "cuisines",
-      itemId: "thai",
-      direction: "right",
-    });
-    recordSwipe(db, {
-      sessionId: s.id,
-      side: "a",
-      phase: "cuisines",
-      itemId: "thai",
-      direction: "right",
-    });
-    expect(getSwipes(db, s.id, "cuisines").length).toBe(1);
+    expect(result.itemId).toBe("ChIJ1");
   });
 });
 
@@ -153,5 +108,53 @@ describe("resets", () => {
     expect(s2.id).toBeGreaterThan(s1.id);
     expect(s2.phase).toBe("cuisines");
     expect(getCurrentSession(db).id).toBe(s2.id);
+  });
+});
+
+describe("bothDoneSwipingCuisines", () => {
+  const deckIds = ["pizza", "thai", "sushi"];
+  it("false until each side has swiped every deck item", () => {
+    const s = createSession(db);
+    for (const id of deckIds) recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: id, direction: "left" });
+    expect(bothDoneSwipingCuisines(db, s.id, deckIds)).toBe(false);
+    for (const id of deckIds.slice(0, 2)) recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: id, direction: "left" });
+    expect(bothDoneSwipingCuisines(db, s.id, deckIds)).toBe(false);
+    recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: "sushi", direction: "right" });
+    expect(bothDoneSwipingCuisines(db, s.id, deckIds)).toBe(true);
+  });
+});
+
+describe("computeCuisineOverlap", () => {
+  const deckIds = ["pizza", "thai", "sushi", "burgers"];
+  it("returns deck-ordered intersection of right-swipes from both sides", () => {
+    const s = createSession(db);
+    recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: "thai", direction: "right" });
+    recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: "sushi", direction: "right" });
+    recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: "sushi", direction: "right" });
+    recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: "burgers", direction: "right" });
+    expect(computeCuisineOverlap(db, s.id, deckIds)).toEqual(["sushi"]);
+  });
+
+  it("preserves deck order for multiple overlap items", () => {
+    const s = createSession(db);
+    for (const id of ["burgers", "pizza", "thai"]) {
+      recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: id, direction: "right" });
+      recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: id, direction: "right" });
+    }
+    expect(computeCuisineOverlap(db, s.id, deckIds)).toEqual(["pizza", "thai", "burgers"]);
+  });
+});
+
+describe("setCuisineStage", () => {
+  it("updates cuisine_stage and returns the new session", () => {
+    const s = createSession(db);
+    expect(s.cuisineStage).toBe("swipe");
+    const updated = setCuisineStage(db, s.id, "bracket");
+    expect(updated.cuisineStage).toBe("bracket");
+    expect(getSessionById(db, s.id).cuisineStage).toBe("bracket");
+  });
+  it("rejects invalid stage values", () => {
+    const s = createSession(db);
+    expect(() => setCuisineStage(db, s.id, "bogus")).toThrow();
   });
 });

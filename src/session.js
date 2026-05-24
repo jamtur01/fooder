@@ -26,6 +26,7 @@ function rowToSession(r) {
   return {
     id: r.id,
     phase: r.phase,
+    cuisineStage: r.cuisine_stage,
     matchedCuisine: r.matched_cuisine,
     matchedRestaurantJson: r.matched_restaurant_json,
   };
@@ -36,6 +37,7 @@ export function recordSwipe(db, { sessionId, side, phase, itemId, direction }) {
     "INSERT OR REPLACE INTO swipe(session_id, side, phase, item_id, direction, created_at) VALUES (?, ?, ?, ?, ?, ?)",
   ).run(sessionId, side, phase, itemId, direction, now());
 
+  if (phase !== "restaurants") return { matched: false };
   if (direction !== "right") return { matched: false };
   const otherSide = side === "a" ? "b" : "a";
   const other = db
@@ -92,4 +94,31 @@ export function resetPhase(db, sessionId, phase) {
 
 export function resetSession(db) {
   return createSession(db);
+}
+
+export function bothDoneSwipingCuisines(db, sessionId, deckIds) {
+  const rows = db.prepare(
+    "SELECT side, item_id FROM swipe WHERE session_id=? AND phase='cuisines'"
+  ).all(sessionId);
+  const aSwiped = new Set(rows.filter(r => r.side === 'a').map(r => r.item_id));
+  const bSwiped = new Set(rows.filter(r => r.side === 'b').map(r => r.item_id));
+  return deckIds.every(id => aSwiped.has(id) && bSwiped.has(id));
+}
+
+export function computeCuisineOverlap(db, sessionId, deckIds) {
+  const rights = db.prepare(
+    "SELECT side, item_id FROM swipe WHERE session_id=? AND phase='cuisines' AND direction='right'"
+  ).all(sessionId);
+  const aRight = new Set(rights.filter(r => r.side === 'a').map(r => r.item_id));
+  const bRight = new Set(rights.filter(r => r.side === 'b').map(r => r.item_id));
+  return deckIds.filter(id => aRight.has(id) && bRight.has(id));
+}
+
+export function setCuisineStage(db, sessionId, stage) {
+  if (stage !== 'swipe' && stage !== 'bracket') {
+    throw new Error(`setCuisineStage: invalid stage ${stage}`);
+  }
+  db.prepare('UPDATE session SET cuisine_stage=?, updated_at=? WHERE id=?')
+    .run(stage, now(), sessionId);
+  return getSessionById(db, sessionId);
 }
