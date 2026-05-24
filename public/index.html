@@ -17,16 +17,43 @@
       <div class="hint"><span class="hint-no">← no</span> · <span class="hint-yes">yes →</span></div>
       <button type="button" class="btn-secondary deck-reset" data-action="reset-session">Start over</button>
     </section>
+
+    <section id="view-cuisines-waiting" class="view" hidden>
+      <h2 class="waiting-title">Waiting for <span data-partner-name>your partner</span>…</h2>
+      <p class="waiting-meta" data-waiting-meta></p>
+      <button type="button" class="btn-secondary" data-action="reset-session">Start over</button>
+    </section>
+
+    <section id="view-bracket" class="view" hidden>
+      <h2 class="bracket-title">Round <span data-bracket-round>1</span></h2>
+      <div class="bracket-pair">
+        <button type="button" class="bracket-card" data-bracket-pick="a"></button>
+        <div class="bracket-vs">vs</div>
+        <button type="button" class="bracket-card" data-bracket-pick="b"></button>
+      </div>
+      <p class="bracket-waiting" data-bracket-waiting hidden>Waiting for <span data-partner-name>partner</span>…</p>
+      <button type="button" class="btn-secondary deck-reset" data-action="reset-phase">Restart bracket</button>
+    </section>
+
+    <section id="view-no-overlap" class="view" hidden>
+      <h2 class="no-overlap-title">No overlap</h2>
+      <p>You didn't both swipe right on the same cuisine.</p>
+      <button type="button" class="btn-primary" data-action="reset-phase">Swipe again</button>
+      <button type="button" class="btn-secondary" data-action="reset-session">Start over</button>
+    </section>
+
     <section id="view-restaurants" class="view deck" hidden>
       <div class="card-stack" data-deck="restaurants"></div>
       <div class="hint"><span class="hint-no">← no</span> · <span class="hint-yes">yes →</span></div>
       <button type="button" class="btn-secondary deck-reset" data-action="reset-session">Start over</button>
     </section>
+
     <section id="view-match" class="view" hidden>
       <div class="match-banner">🎉 it's a match</div>
       <button type="button" class="btn-primary" data-action="reset-session">Start over</button>
       <div class="match-card" data-match></div>
     </section>
+
     <section id="view-empty" class="view" hidden>
       <p data-empty-message></p>
       <button type="button" class="btn-primary" data-action="reset-phase">Try this round again</button>
