@@ -57,6 +57,64 @@ export function getRoundPairs(db, sessionId, roundIndex) {
   ).all(sessionId, roundIndex);
 }
 
+function survivorsFromRound(rows) {
+  const out = [];
+  for (const p of rows) {
+    if (p.outcome === 'a_wins') out.push(p.itemA);
+    else if (p.outcome === 'b_wins') out.push(p.itemB);
+    else if (p.outcome === 'both') out.push(p.itemA, p.itemB);
+    else throw new Error(`buildNextRound called with unresolved pair ${p.pairIndex}`);
+  }
+  return out;
+}
+
+function deckIndex(deckOrder, item) {
+  const i = deckOrder.indexOf(item);
+  return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+}
+
+function lastThreeTiesOnSameFinalPair(db, sessionId) {
+  const rounds = db.prepare(
+    'SELECT round_index, pair_index, item_a, item_b, outcome FROM bracket_round WHERE session_id=? ORDER BY round_index DESC'
+  ).all(sessionId);
+  const byRound = new Map();
+  for (const r of rounds) {
+    if (!byRound.has(r.round_index)) byRound.set(r.round_index, []);
+    byRound.get(r.round_index).push(r);
+  }
+  const sortedRoundIndexes = Array.from(byRound.keys()).sort((x, y) => y - x);
+  if (sortedRoundIndexes.length < 3) return null;
+  const checkRounds = sortedRoundIndexes.slice(0, 3).map(i => byRound.get(i));
+  if (!checkRounds.every(r => r.length === 1 && r[0].outcome === 'both')) return null;
+  const first = checkRounds[0][0];
+  if (!checkRounds.every(r => r[0].item_a === first.item_a && r[0].item_b === first.item_b)) return null;
+  return { itemA: first.item_a, itemB: first.item_b };
+}
+
+export function buildNextRound(db, sessionId, deckOrder) {
+  const latest = latestRoundIndex(db, sessionId);
+  if (latest === null) throw new Error('buildNextRound: no rounds exist yet');
+  const pairs = getRoundPairs(db, sessionId, latest);
+  const survivors = survivorsFromRound(pairs);
+
+  if (survivors.length === 0) throw new Error('buildNextRound: no survivors');
+  if (survivors.length === 1) return { done: true, winner: survivors[0] };
+
+  if (survivors.length === 2) {
+    const stale = lastThreeTiesOnSameFinalPair(db, sessionId);
+    if (stale && new Set([stale.itemA, stale.itemB]).size === 2 &&
+        survivors.includes(stale.itemA) && survivors.includes(stale.itemB)) {
+      const winner = deckIndex(deckOrder, stale.itemA) <= deckIndex(deckOrder, stale.itemB)
+        ? stale.itemA : stale.itemB;
+      return { done: true, winner };
+    }
+  }
+
+  const nextRoundIndex = latest + 1;
+  const round = createRound(db, sessionId, nextRoundIndex, survivors);
+  return { done: false, round };
+}
+
 export function recordBracketVote(db, sessionId, { side, pairIndex, pick }) {
   const round = latestRoundIndex(db, sessionId);
   if (round === null) throw new Error('no active bracket round');
