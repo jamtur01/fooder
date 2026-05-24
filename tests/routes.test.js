@@ -139,6 +139,35 @@ describe('side routing with named sides', () => {
   });
 });
 
+describe('POST /api/reset — stage-aware in cuisines phase', () => {
+  async function getIntoBracket(items) {
+    const { CUISINES } = await import('../src/cuisines.js');
+    for (const c of CUISINES) {
+      const dir = items.includes(c.id) ? 'right' : 'left';
+      await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+    }
+  }
+
+  it('scope=phase during stage=bracket clears bracket data but keeps cuisine swipes', async () => {
+    await getIntoBracket(['thai', 'pizza', 'japanese']);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM bracket_round').get().n).toBeGreaterThan(0);
+    const swipeCountBefore = db.prepare("SELECT COUNT(*) AS n FROM swipe WHERE phase='cuisines'").get().n;
+    const res = await request(app).post('/api/reset').set('Cookie', 'side=a').send({ scope: 'phase' });
+    expect(res.status).toBe(200);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM swipe WHERE phase='cuisines'").get().n).toBe(swipeCountBefore);
+    expect(db.prepare('SELECT MAX(round_index) AS r FROM bracket_round').get().r).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM bracket_vote').get().n).toBe(0);
+  });
+
+  it('scope=phase during stage=swipe clears cuisine swipes (existing behavior)', async () => {
+    await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'right' });
+    const res = await request(app).post('/api/reset').set('Cookie', 'side=a').send({ scope: 'phase' });
+    expect(res.status).toBe(200);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM swipe').get().n).toBe(0);
+  });
+});
+
 describe('POST /api/bracket-vote', () => {
   async function getIntoBracketWithOverlap(items) {
     const { CUISINES } = await import('../src/cuisines.js');

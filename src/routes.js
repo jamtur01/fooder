@@ -295,6 +295,32 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     const { scope } = req.body ?? {};
     const session = ensureSession(db);
     if (scope === 'phase') {
+      if (session.phase === 'cuisines' && session.cuisineStage === 'bracket') {
+        db.prepare('DELETE FROM bracket_vote WHERE session_id=?').run(session.id);
+        db.prepare('DELETE FROM bracket_round WHERE session_id=?').run(session.id);
+        const overlap = computeCuisineOverlap(db, session.id, CUISINES.map(c => c.id));
+        if (overlap.length >= 2) {
+          createRound(db, session.id, 0, overlap);
+          const cur = getCurrentPair(db, session.id);
+          hub.broadcast({
+            type: 'phase-reset',
+            phase: 'cuisines',
+            bracket: {
+              roundIndex: cur.roundIndex,
+              currentPair: {
+                pairIndex: cur.pairIndex,
+                a: cuisineById(cur.itemA),
+                b: cur.itemB ? cuisineById(cur.itemB) : null,
+              },
+            },
+          });
+        } else {
+          setCuisineStage(db, session.id, 'swipe');
+          hub.broadcast({ type: 'phase-reset', phase: 'cuisines', deck: CUISINES });
+        }
+        return res.json({ ok: true });
+      }
+
       resetPhase(db, session.id, session.phase);
       let deck;
       if (session.phase === 'cuisines') deck = CUISINES;
