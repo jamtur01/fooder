@@ -16,7 +16,7 @@ import {
   computeCuisineOverlap,
   setCuisineStage,
 } from './session.js';
-import { createRound, getCurrentPair } from './bracket.js';
+import { createRound, getCurrentPair, recordBracketVote, buildNextRound } from './bracket.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
@@ -234,6 +234,61 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     advanceOnMatch(db, { sessionId: session.id, phase: 'restaurants', match: matchItem });
     hub.broadcast({ type: 'match', phase: 'restaurants', item: matchItem });
     res.json({ matched: true });
+  });
+
+  router.post('/api/bracket-vote', requireSide, async (req, res) => {
+    const { pairIndex, pick } = req.body ?? {};
+    if (typeof pairIndex !== 'number' || typeof pick !== 'string') {
+      return res.status(400).json({ error: 'pairIndex (number) and pick (string) required' });
+    }
+    const session = ensureSession(db);
+    if (session.phase !== 'cuisines' || session.cuisineStage !== 'bracket') {
+      return res.status(400).json({ error: 'bracket vote only valid in cuisines bracket stage' });
+    }
+
+    let result;
+    try {
+      result = recordBracketVote(db, session.id, { side: req.side, pairIndex, pick });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    hub.broadcast({ type: 'bracket-vote-cast', side: req.side, pairIndex });
+
+    if (!result.resolved) return res.json({ resolved: false });
+
+    hub.broadcast({
+      type: 'bracket-pair-resolved',
+      pairIndex,
+      outcome: result.outcome,
+      winner: result.winners.length === 1 ? result.winners[0] : null,
+    });
+
+    if (getCurrentPair(db, session.id)) return res.json({ resolved: true });
+
+    const deckOrder = CUISINES.map(c => c.id);
+    const next = buildNextRound(db, session.id, deckOrder);
+
+    if (next.done) {
+      const matched = cuisineById(next.winner);
+      advanceOnMatch(db, { sessionId: session.id, phase: 'cuisines', match: matched });
+      const restaurants = await restaurantsForCuisine(places, matched.id);
+      hub.broadcast({ type: 'match', phase: 'cuisines', item: matched });
+      hub.broadcast({ type: 'phase-change', phase: 'restaurants', deck: restaurants });
+      return res.json({ resolved: true, done: true });
+    }
+
+    const cur = getCurrentPair(db, session.id);
+    hub.broadcast({
+      type: 'bracket-round-start',
+      roundIndex: cur.roundIndex,
+      currentPair: {
+        pairIndex: cur.pairIndex,
+        a: cuisineById(cur.itemA),
+        b: cur.itemB ? cuisineById(cur.itemB) : null,
+      },
+    });
+    res.json({ resolved: true });
   });
 
   router.post('/api/reset', requireSide, async (req, res) => {

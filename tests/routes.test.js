@@ -138,3 +138,45 @@ describe('side routing with named sides', () => {
     expect(res.headers.location).toBe('/james');
   });
 });
+
+describe('POST /api/bracket-vote', () => {
+  async function getIntoBracketWithOverlap(items) {
+    const { CUISINES } = await import('../src/cuisines.js');
+    for (const c of CUISINES) {
+      const dir = items.includes(c.id) ? 'right' : 'left';
+      await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+    }
+  }
+
+  it('rejects vote before bracket stage', async () => {
+    const res = await request(app).post('/api/bracket-vote').set('Cookie', 'side=a')
+      .send({ pairIndex: 0, pick: 'thai' });
+    expect(res.status).toBe(400);
+  });
+
+  it('records vote and returns resolved:false on first side', async () => {
+    await getIntoBracketWithOverlap(['thai', 'pizza']);
+    const res = await request(app).post('/api/bracket-vote').set('Cookie', 'side=a')
+      .send({ pairIndex: 0, pick: 'thai' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ resolved: false });
+  });
+
+  it('resolves when both sides vote the same; advances phase if bracket is done', async () => {
+    await getIntoBracketWithOverlap(['thai', 'pizza']);
+    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'thai' });
+    const res = await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'thai' });
+    expect(res.body.resolved).toBe(true);
+    const row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('restaurants');
+    expect(row.matched_cuisine).toBe('thai');
+  });
+
+  it('rejects malformed pick', async () => {
+    await getIntoBracketWithOverlap(['thai', 'pizza']);
+    const res = await request(app).post('/api/bracket-vote').set('Cookie', 'side=a')
+      .send({ pairIndex: 0, pick: 'mexican' });
+    expect(res.status).toBe(400);
+  });
+});
