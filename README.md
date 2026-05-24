@@ -4,10 +4,13 @@ Two-person swipe app for picking dinner. Personal hack.
 
 Two phases:
 
-1. **Cuisines** — both partners swipe through a fixed deck (Pizza, Thai, Sushi, ...). First cuisine you both swipe right on wins. The rest of the deck is skipped.
-2. **Restaurants** — server fetches restaurants for that cuisine from Google Places, prepends any favorites you've configured, and serves them as a deck. First restaurant you both swipe right on wins. Match screen shows photo, address, phone, Google Maps link.
+1. **Cuisines** — both partners blind-swipe through the full cuisine deck (right = yes, left = no). Once *both* are done, the server computes the overlap (cuisines both said yes to):
+   - 0 overlap → "no overlap" screen with retry.
+   - 1 overlap → that cuisine wins automatically.
+   - 2+ overlap → **bracket**. Pair survivors in deck order, both partners tap their pick for each pair. Agree → other item out; disagree → both advance. Repeats until one remains. (Final-pair stalemate: after 3 consecutive ties, the earlier-in-deck item wins.)
+2. **Restaurants** — server fetches restaurants for the matched cuisine, prepends your favorites, and serves them as a deck. First mutual right-swipe wins. Match screen shows photo, address, phone, Google Maps link.
 
-Real-time over SSE: when one of you swipes right on something the other already liked, both phones jump to the next screen immediately.
+Real-time over SSE: partner-online indicators, "partner is done swiping", bracket round transitions all push live.
 
 ## Local dev
 
