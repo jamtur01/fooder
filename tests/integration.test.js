@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import request from 'supertest';
 import { buildApp } from './helpers.js';
 
 const restaurants = [
@@ -14,13 +13,13 @@ const placesOverride = {
   getFavorites: async () => [],
 };
 
-let app, db;
-beforeEach(() => { ({ app, db } = buildApp({ placesOverride })); });
+let agent, db;
+beforeEach(() => { ({ agent, db } = buildApp({ placesOverride })); });
 
 describe('full flow — cuisine bracket', () => {
   async function swipeAll(side, swipes) {
     for (const [itemId, direction] of swipes) {
-      await request(app).post('/api/swipe').set('Cookie', `side=${side}`).send({ itemId, direction });
+      await agent.post('/api/swipe').set('Cookie', `side=${side}`).send({ itemId, direction });
     }
   }
   async function swipeAllCuisines(side, rightItems) {
@@ -52,17 +51,17 @@ describe('full flow — cuisine bracket', () => {
     expect(row.cuisine_stage).toBe('bracket');
 
     // Round 0: pairs (pizza, thai), (japanese bye). Tie on pair 0 → both advance.
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'thai' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'thai' });
 
     // Round 1: survivors [pizza, thai, japanese] → pairs (pizza, thai), (japanese bye).
     // Both pick pizza → pizza wins.
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
 
     // Round 2: survivors [pizza, japanese]. Both pick pizza → bracket done.
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
 
     row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
     expect(row.phase).toBe('restaurants');
@@ -74,18 +73,18 @@ describe('full flow — cuisine bracket', () => {
     await swipeAllCuisines('b', ['pizza', 'thai', 'japanese']);
     // Vote pizza all the way (single-side preferred): A picks pizza, B picks pizza for each round.
     // Round 0 pair 0 (pizza, thai): pizza wins
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
     // Round 1 survivors [pizza, japanese] → pair 0 (pizza, japanese): pizza wins → bracket done
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'pizza' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'pizza' });
 
     let row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
     expect(row.phase).toBe('restaurants');
 
     // Restaurants flow: instant match. placesOverride returns [ChIJ1, ChIJ2].
-    await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'ChIJ1', direction: 'right' });
-    const res = await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'right' });
+    await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'ChIJ1', direction: 'right' });
+    const res = await agent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'right' });
     expect(res.body.matched).toBe(true);
     row = db.prepare('SELECT phase, matched_restaurant_json FROM session ORDER BY id DESC LIMIT 1').get();
     expect(row.phase).toBe('done');

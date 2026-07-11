@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import request from 'supertest';
 import { buildApp } from './helpers.js';
 
-let app, db;
-beforeEach(() => { ({ app, db } = buildApp()); });
+let db, agent;
+beforeEach(() => { ({ db, agent } = buildApp()); });
 
 describe('GET /api/state', () => {
   it('returns the cuisines deck with stage=swipe, partnerDone=false, bracket=null', async () => {
-    const res = await request(app).get('/api/state').set('Cookie', 'side=a');
+    const res = await agent.get('/api/state').set('Cookie', 'side=a');
     expect(res.status).toBe(200);
     expect(res.body.phase).toBe('cuisines');
     expect(res.body.stage).toBe('swipe');
@@ -19,29 +18,29 @@ describe('GET /api/state', () => {
   it('returns partnerDone=true once the other side has swiped every cuisine', async () => {
     const { CUISINES } = await import('../src/cuisines.js');
     for (const c of CUISINES) {
-      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: 'left' });
+      await agent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: 'left' });
     }
-    const res = await request(app).get('/api/state').set('Cookie', 'side=a');
+    const res = await agent.get('/api/state').set('Cookie', 'side=a');
     expect(res.body.partnerDone).toBe(true);
   });
 
   it('returns 400 without side cookie', async () => {
-    const res = await request(app).get('/api/state');
+    const res = await agent.get('/api/state');
     expect(res.status).toBe(400);
   });
 });
 
 describe('POST /api/swipe', () => {
   it('records swipe and returns matched:false on first side (cuisines)', async () => {
-    const res = await request(app).post('/api/swipe').set('Cookie', 'side=a')
+    const res = await agent.post('/api/swipe').set('Cookie', 'side=a')
       .send({ itemId: 'thai', direction: 'right' });
     expect(res.status).toBe(200);
     expect(res.body.matched).toBe(false);
   });
 
   it('cuisines phase no longer instant-matches when both right-swipe same item', async () => {
-    await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'right' });
-    const res = await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'thai', direction: 'right' });
+    await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'right' });
+    const res = await agent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'thai', direction: 'right' });
     expect(res.body.matched).toBe(false);
     const row = db.prepare('SELECT phase, cuisine_stage FROM session ORDER BY id DESC LIMIT 1').get();
     expect(row.phase).toBe('cuisines');
@@ -49,7 +48,7 @@ describe('POST /api/swipe', () => {
   });
 
   it('rejects invalid direction', async () => {
-    const res = await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'sideways' });
+    const res = await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'sideways' });
     expect(res.status).toBe(400);
   });
 
@@ -58,8 +57,8 @@ describe('POST /api/swipe', () => {
     // Both right-swipe ONLY thai; left on the rest.
     for (const c of CUISINES) {
       const dir = c.id === 'thai' ? 'right' : 'left';
-      await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
-      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
     }
     const row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
     expect(row.phase).toBe('restaurants');
@@ -71,8 +70,8 @@ describe('POST /api/swipe', () => {
     const overlap = new Set(['thai', 'pizza']);
     for (const c of CUISINES) {
       const dir = overlap.has(c.id) ? 'right' : 'left';
-      await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
-      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
     }
     const row = db.prepare('SELECT phase, cuisine_stage FROM session ORDER BY id DESC LIMIT 1').get();
     expect(row.phase).toBe('cuisines');
@@ -83,58 +82,58 @@ describe('POST /api/swipe', () => {
 
 describe('POST /api/reset', () => {
   it('scope=phase clears current phase swipes', async () => {
-    await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'right' });
-    const res = await request(app).post('/api/reset').set('Cookie', 'side=a').send({ scope: 'phase' });
+    await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'right' });
+    const res = await agent.post('/api/reset').set('Cookie', 'side=a').send({ scope: 'phase' });
     expect(res.status).toBe(200);
     expect(db.prepare('SELECT COUNT(*) AS n FROM swipe').get().n).toBe(0);
   });
   it('scope=session creates a new session', async () => {
-    await request(app).get('/api/state').set('Cookie', 'side=a');
+    await agent.get('/api/state').set('Cookie', 'side=a');
     const before = db.prepare('SELECT MAX(id) AS id FROM session').get().id;
-    const res = await request(app).post('/api/reset').set('Cookie', 'side=a').send({ scope: 'session' });
+    const res = await agent.post('/api/reset').set('Cookie', 'side=a').send({ scope: 'session' });
     expect(res.status).toBe(200);
     const after = db.prepare('SELECT MAX(id) AS id FROM session').get().id;
     expect(after).toBe(before + 1);
   });
   it('rejects unknown scope', async () => {
-    const res = await request(app).post('/api/reset').set('Cookie', 'side=a').send({ scope: 'nope' });
+    const res = await agent.post('/api/reset').set('Cookie', 'side=a').send({ scope: 'nope' });
     expect(res.status).toBe(400);
   });
 });
 
 describe('side routing', () => {
   it('GET / with no cookie redirects to /a and sets cookie', async () => {
-    const res = await request(app).get('/');
+    const res = await agent.get('/');
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/a');
     expect(res.headers['set-cookie']?.[0]).toMatch(/side=a/);
   });
   it('GET / with side=b cookie redirects to /b', async () => {
-    const res = await request(app).get('/').set('Cookie', 'side=b');
+    const res = await agent.get('/').set('Cookie', 'side=b');
     expect(res.headers.location).toBe('/b');
   });
   it('GET /a sets cookie and returns 200 (index.html)', async () => {
-    const res = await request(app).get('/a');
+    const res = await agent.get('/a');
     expect(res.status).toBe(200);
     expect(res.headers['set-cookie']?.[0]).toMatch(/side=a/);
   });
   it('GET /c is 404', async () => {
-    const res = await request(app).get('/c');
+    const res = await agent.get('/c');
     expect(res.status).toBe(404);
   });
 });
 
 describe('side routing with named sides', () => {
   it('GET /james (slug of SIDE_A_NAME) serves index; /a 404s', async () => {
-    const { app: namedApp } = buildApp({ sideNames: { a: 'James', b: 'Sarah' } });
-    const ok = await request(namedApp).get('/james');
+    const { agent: namedAgent } = buildApp({ sideNames: { a: 'James', b: 'Sarah' } });
+    const ok = await namedAgent.get('/james');
     expect(ok.status).toBe(200);
-    const fail = await request(namedApp).get('/a');
+    const fail = await namedAgent.get('/a');
     expect(fail.status).toBe(404);
   });
   it('GET / redirects to slug, not bare letter', async () => {
-    const { app: namedApp } = buildApp({ sideNames: { a: 'James', b: 'Sarah' } });
-    const res = await request(namedApp).get('/');
+    const { agent: namedAgent } = buildApp({ sideNames: { a: 'James', b: 'Sarah' } });
+    const res = await namedAgent.get('/');
     expect(res.headers.location).toBe('/james');
   });
 });
@@ -144,8 +143,8 @@ describe('POST /api/reset — stage-aware in cuisines phase', () => {
     const { CUISINES } = await import('../src/cuisines.js');
     for (const c of CUISINES) {
       const dir = items.includes(c.id) ? 'right' : 'left';
-      await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
-      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
     }
   }
 
@@ -153,7 +152,7 @@ describe('POST /api/reset — stage-aware in cuisines phase', () => {
     await getIntoBracket(['thai', 'pizza', 'japanese']);
     expect(db.prepare('SELECT COUNT(*) AS n FROM bracket_round').get().n).toBeGreaterThan(0);
     const swipeCountBefore = db.prepare("SELECT COUNT(*) AS n FROM swipe WHERE phase='cuisines'").get().n;
-    const res = await request(app).post('/api/reset').set('Cookie', 'side=a').send({ scope: 'phase' });
+    const res = await agent.post('/api/reset').set('Cookie', 'side=a').send({ scope: 'phase' });
     expect(res.status).toBe(200);
     expect(db.prepare("SELECT COUNT(*) AS n FROM swipe WHERE phase='cuisines'").get().n).toBe(swipeCountBefore);
     expect(db.prepare('SELECT MAX(round_index) AS r FROM bracket_round').get().r).toBe(0);
@@ -161,8 +160,8 @@ describe('POST /api/reset — stage-aware in cuisines phase', () => {
   });
 
   it('scope=phase during stage=swipe clears cuisine swipes (existing behavior)', async () => {
-    await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'right' });
-    const res = await request(app).post('/api/reset').set('Cookie', 'side=a').send({ scope: 'phase' });
+    await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'thai', direction: 'right' });
+    const res = await agent.post('/api/reset').set('Cookie', 'side=a').send({ scope: 'phase' });
     expect(res.status).toBe(200);
     expect(db.prepare('SELECT COUNT(*) AS n FROM swipe').get().n).toBe(0);
   });
@@ -173,20 +172,20 @@ describe('POST /api/bracket-vote', () => {
     const { CUISINES } = await import('../src/cuisines.js');
     for (const c of CUISINES) {
       const dir = items.includes(c.id) ? 'right' : 'left';
-      await request(app).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
-      await request(app).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
     }
   }
 
   it('rejects vote before bracket stage', async () => {
-    const res = await request(app).post('/api/bracket-vote').set('Cookie', 'side=a')
+    const res = await agent.post('/api/bracket-vote').set('Cookie', 'side=a')
       .send({ pairIndex: 0, pick: 'thai' });
     expect(res.status).toBe(400);
   });
 
   it('records vote and returns resolved:false on first side', async () => {
     await getIntoBracketWithOverlap(['thai', 'pizza']);
-    const res = await request(app).post('/api/bracket-vote').set('Cookie', 'side=a')
+    const res = await agent.post('/api/bracket-vote').set('Cookie', 'side=a')
       .send({ pairIndex: 0, pick: 'thai' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ resolved: false });
@@ -194,8 +193,8 @@ describe('POST /api/bracket-vote', () => {
 
   it('resolves when both sides vote the same; advances phase if bracket is done', async () => {
     await getIntoBracketWithOverlap(['thai', 'pizza']);
-    await request(app).post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'thai' });
-    const res = await request(app).post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'thai' });
+    await agent.post('/api/bracket-vote').set('Cookie', 'side=a').send({ pairIndex: 0, pick: 'thai' });
+    const res = await agent.post('/api/bracket-vote').set('Cookie', 'side=b').send({ pairIndex: 0, pick: 'thai' });
     expect(res.body.resolved).toBe(true);
     const row = db.prepare('SELECT phase, matched_cuisine FROM session ORDER BY id DESC LIMIT 1').get();
     expect(row.phase).toBe('restaurants');
@@ -204,32 +203,32 @@ describe('POST /api/bracket-vote', () => {
 
   it('rejects malformed pick', async () => {
     await getIntoBracketWithOverlap(['thai', 'pizza']);
-    const res = await request(app).post('/api/bracket-vote').set('Cookie', 'side=a')
+    const res = await agent.post('/api/bracket-vote').set('Cookie', 'side=a')
       .send({ pairIndex: 0, pick: 'mexican' });
     expect(res.status).toBe(400);
   });
 });
 
 describe('GET /api/state — flakiness regressions', () => {
-  async function swipeAllCuisines(side, rightItems, agent = app) {
+  async function swipeAllCuisines(side, rightItems, viaAgent = agent) {
     const { CUISINES } = await import('../src/cuisines.js');
     for (const c of CUISINES) {
       const dir = rightItems.includes(c.id) ? 'right' : 'left';
-      await request(agent).post('/api/swipe').set('Cookie', `side=${side}`).send({ itemId: c.id, direction: dir });
+      await viaAgent.post('/api/swipe').set('Cookie', `side=${side}`).send({ itemId: c.id, direction: dir });
     }
   }
 
   it('derives stage=no-overlap when both finished with zero overlap (reload-safe)', async () => {
     await swipeAllCuisines('a', ['thai']);
     await swipeAllCuisines('b', ['pizza']);
-    const res = await request(app).get('/api/state').set('Cookie', 'side=a');
+    const res = await agent.get('/api/state').set('Cookie', 'side=a');
     expect(res.body.phase).toBe('cuisines');
     expect(res.body.stage).toBe('no-overlap');
   });
 
   it('stage stays swipe while partner is not done', async () => {
     await swipeAllCuisines('a', ['thai']);
-    const res = await request(app).get('/api/state').set('Cookie', 'side=a');
+    const res = await agent.get('/api/state').set('Cookie', 'side=a');
     expect(res.body.stage).toBe('swipe');
   });
 });
@@ -244,25 +243,25 @@ describe('restaurant deck snapshot and deckError', () => {
     const { CUISINES } = await import('../src/cuisines.js');
     for (const c of CUISINES) {
       const dir = c.id === 'thai' ? 'right' : 'left';
-      await request(agent).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
-      await request(agent).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await agent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
     }
   }
 
   it('snapshots deck at transition; search drift changes neither deck nor match lookup', async () => {
     let results = [R1, R2];
-    const { app: myApp, db: myDb } = buildApp({ placesOverride: {
+    const { agent: myAgent, db: myDb } = buildApp({ placesOverride: {
       searchRestaurants: async () => results,
       getFavorites: async () => [],
     } });
-    await reachRestaurants(myApp);
+    await reachRestaurants(myAgent);
     results = [R3]; // upstream drift (cache expiry + openNow churn)
 
-    const state = await request(myApp).get('/api/state').set('Cookie', 'side=a');
+    const state = await myAgent.get('/api/state').set('Cookie', 'side=a');
     expect(state.body.deck.map(r => r.id)).toEqual(['ChIJ1', 'ChIJ2']);
 
-    await request(myApp).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'ChIJ1', direction: 'right' });
-    const res = await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'right' });
+    await myAgent.post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'ChIJ1', direction: 'right' });
+    const res = await myAgent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'right' });
     expect(res.status).toBe(200);
     expect(res.body.matched).toBe(true);
     const row = myDb.prepare('SELECT phase FROM session ORDER BY id DESC LIMIT 1').get();
@@ -270,12 +269,12 @@ describe('restaurant deck snapshot and deckError', () => {
   });
 
   it('surfaces deckError with favorites-only deck when search fails', async () => {
-    const { app: myApp } = buildApp({ placesOverride: {
+    const { agent: myAgent } = buildApp({ placesOverride: {
       searchRestaurants: async () => { throw new Error('Places API 500'); },
       getFavorites: async () => [FAV],
     } });
-    await reachRestaurants(myApp);
-    const res = await request(myApp).get('/api/state').set('Cookie', 'side=a');
+    await reachRestaurants(myAgent);
+    const res = await myAgent.get('/api/state').set('Cookie', 'side=a');
     expect(res.status).toBe(200);
     expect(res.body.deckError).toMatch(/Places API 500/);
     expect(res.body.deck.map(r => r.id)).toEqual(['ChIJfav']);
@@ -283,40 +282,40 @@ describe('restaurant deck snapshot and deckError', () => {
 
   it('recovers the deck on a later state fetch after a transient search failure', async () => {
     let fail = true;
-    const { app: myApp } = buildApp({ placesOverride: {
+    const { agent: myAgent } = buildApp({ placesOverride: {
       searchRestaurants: async () => { if (fail) throw new Error('boom'); return [R1]; },
       getFavorites: async () => [],
     } });
-    await reachRestaurants(myApp); // transition happens while search is failing
+    await reachRestaurants(myAgent); // transition happens while search is failing
     fail = false;
-    const res = await request(myApp).get('/api/state').set('Cookie', 'side=a');
+    const res = await myAgent.get('/api/state').set('Cookie', 'side=a');
     expect(res.body.deckError).toBeNull();
     expect(res.body.deck.map(r => r.id)).toEqual(['ChIJ1']);
   });
 
   it('partnerDone=true in restaurants phase once partner exhausted the deck', async () => {
-    const { app: myApp } = buildApp({ placesOverride: {
+    const { agent: myAgent } = buildApp({ placesOverride: {
       searchRestaurants: async () => [R1, R2],
       getFavorites: async () => [],
     } });
-    await reachRestaurants(myApp);
-    await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'left' });
-    await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ2', direction: 'left' });
-    const res = await request(myApp).get('/api/state').set('Cookie', 'side=a');
+    await reachRestaurants(myAgent);
+    await myAgent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'left' });
+    await myAgent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ2', direction: 'left' });
+    const res = await myAgent.get('/api/state').set('Cookie', 'side=a');
     expect(res.body.partnerDone).toBe(true);
   });
 
   it('broadcasts partner-done when a side exhausts the restaurant deck', async () => {
-    const { app: myApp, hub } = buildApp({ placesOverride: {
+    const { agent: myAgent, hub } = buildApp({ placesOverride: {
       searchRestaurants: async () => [R1, R2],
       getFavorites: async () => [],
     } });
-    await reachRestaurants(myApp);
+    await reachRestaurants(myAgent);
     const writes = [];
     const client = { write: (chunk) => writes.push(chunk) };
     hub.register('a', client);
-    await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'left' });
-    await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ2', direction: 'left' });
+    await myAgent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'left' });
+    await myAgent.post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ2', direction: 'left' });
     const events = writes.filter(w => w.startsWith('data: ')).map(w => JSON.parse(w.slice(6)));
     expect(events.some(e => e.type === 'partner-done' && e.side === 'b')).toBe(true);
     hub.unregister('a', client);
