@@ -9,7 +9,6 @@ import {
   isDeckExhausted,
   resetPhase,
   resetSession,
-  bothDoneSwipingCuisines,
   computeCuisineOverlap,
   setCuisineStage,
   getSessionById,
@@ -111,18 +110,6 @@ describe("resets", () => {
   });
 });
 
-describe("bothDoneSwipingCuisines", () => {
-  const deckIds = ["pizza", "thai", "sushi"];
-  it("false until each side has swiped every deck item", () => {
-    const s = createSession(db);
-    for (const id of deckIds) recordSwipe(db, { sessionId: s.id, side: "a", phase: "cuisines", itemId: id, direction: "left" });
-    expect(bothDoneSwipingCuisines(db, s.id, deckIds)).toBe(false);
-    for (const id of deckIds.slice(0, 2)) recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: id, direction: "left" });
-    expect(bothDoneSwipingCuisines(db, s.id, deckIds)).toBe(false);
-    recordSwipe(db, { sessionId: s.id, side: "b", phase: "cuisines", itemId: "sushi", direction: "right" });
-    expect(bothDoneSwipingCuisines(db, s.id, deckIds)).toBe(true);
-  });
-});
 
 describe("computeCuisineOverlap", () => {
   const deckIds = ["pizza", "thai", "sushi", "burgers"];

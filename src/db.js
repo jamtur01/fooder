@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS session (
   cuisine_stage TEXT NOT NULL DEFAULT 'swipe' CHECK (cuisine_stage IN ('swipe', 'bracket')),
   matched_cuisine TEXT,
   matched_restaurant_json TEXT,
+  deck_json TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -61,11 +62,15 @@ CREATE INDEX IF NOT EXISTS idx_bracket_round_session ON bracket_round(session_id
 
 export function migrateSchema(db) {
   const cols = db.prepare("PRAGMA table_info('session')").all().map(c => c.name);
-  if (cols.length > 0 && !cols.includes('cuisine_stage')) {
+  if (cols.length === 0) return;
+  if (!cols.includes('cuisine_stage')) {
     db.exec(
       "ALTER TABLE session ADD COLUMN cuisine_stage TEXT NOT NULL DEFAULT 'swipe' " +
       "CHECK (cuisine_stage IN ('swipe', 'bracket'))"
     );
+  }
+  if (!cols.includes('deck_json')) {
+    db.exec('ALTER TABLE session ADD COLUMN deck_json TEXT');
   }
 }
 

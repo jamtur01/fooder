@@ -49,15 +49,19 @@ describe('SseHub', () => {
     expect(hub.isOnline('a')).toBe(false);
   });
 
-  it('onChange fires when a side first connects or last disconnects', () => {
-    const events = [];
-    hub.onChange((side, online) => events.push([side, online]));
-    const c1 = fakeClient();
-    const c2 = fakeClient();
-    hub.register('a', c1);
-    hub.register('a', c2);  // already online — no event
-    hub.unregister('a', c1); // still online
-    hub.unregister('a', c2); // now offline
-    expect(events).toEqual([['a', true], ['a', false]]);
+  it('writes heartbeat comments to connected clients while any are online', () => {
+    vi.useFakeTimers();
+    try {
+      const hb = createSseHub({ heartbeatMs: 1000 });
+      const c = fakeClient();
+      hb.register('a', c);
+      vi.advanceTimersByTime(3000);
+      expect(c.writes.filter(w => w === ': ping\n\n')).toHaveLength(3);
+      hb.unregister('a', c);
+      vi.advanceTimersByTime(3000);
+      expect(c.writes.filter(w => w === ': ping\n\n')).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

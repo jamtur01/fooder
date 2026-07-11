@@ -12,7 +12,8 @@ import {
   advanceOnMatch,
   resetPhase,
   resetSession,
-  bothDoneSwipingCuisines,
+  isDeckExhausted,
+  setSessionDeck,
   computeCuisineOverlap,
   setCuisineStage,
 } from './session.js';
@@ -53,57 +54,30 @@ function ensureSession(db) {
   return createSession(db);
 }
 
-async function restaurantsForCuisine(places, cuisine) {
-  const [favorites, search] = await Promise.all([
-    places.getFavorites(cuisine).catch(() => []),
-    places.searchRestaurants(cuisine).catch(() => []),
+// Favorites failures are non-fatal (handled per-place inside getFavorites); a search
+// failure degrades to a favorites-only deck plus an error the client can surface.
+async function fetchRestaurantDeck(places, cuisine) {
+  const [favorites, search] = await Promise.allSettled([
+    places.getFavorites(cuisine),
+    places.searchRestaurants(cuisine),
   ]);
-  const seen = new Set(favorites.map(r => r.id));
-  return [...favorites, ...search.filter(r => !seen.has(r.id))];
-}
-
-async function buildDeck(places, session) {
-  if (session.phase === 'cuisines') return CUISINES;
-  if (session.phase === 'restaurants') {
-    return restaurantsForCuisine(places, session.matchedCuisine);
-  }
-  return [];
+  const favs = favorites.status === 'fulfilled' ? favorites.value : [];
+  const seen = new Set(favs.map(r => r.id));
+  const searched = search.status === 'fulfilled' ? search.value.filter(r => !seen.has(r.id)) : [];
+  const error = search.status === 'rejected'
+    ? `restaurant search failed: ${search.reason?.message ?? search.reason}`
+    : null;
+  return { deck: [...favs, ...searched], error };
 }
 
 function cuisineById(id) { return CUISINES.find(c => c.id === id); }
 
-async function transitionFromSwipeToBracket({
-  db, session, places, hub, CUISINES: cuisineList, cuisineById: byId, advanceOnMatch: advance,
-  restaurantsForCuisine: restaurants,
-}) {
-  const overlap = computeCuisineOverlap(db, session.id, cuisineList.map(c => c.id));
-  if (overlap.length === 0) {
-    hub.broadcast({ type: 'stage-change', stage: 'no-overlap' });
-    return;
-  }
-  if (overlap.length === 1) {
-    const matched = byId(overlap[0]);
-    advance(db, { sessionId: session.id, phase: 'cuisines', match: matched });
-    const restaurantList = await restaurants(places, matched.id);
-    hub.broadcast({ type: 'match', phase: 'cuisines', item: matched });
-    hub.broadcast({ type: 'phase-change', phase: 'restaurants', deck: restaurantList });
-    return;
-  }
-  createRound(db, session.id, 0, overlap);
-  setCuisineStage(db, session.id, 'bracket');
-  const cur = getCurrentPair(db, session.id);
-  hub.broadcast({
-    type: 'stage-change',
-    stage: 'bracket',
-    bracket: {
-      roundIndex: cur.roundIndex,
-      currentPair: {
-        pairIndex: cur.pairIndex,
-        a: byId(cur.itemA),
-        b: cur.itemB ? byId(cur.itemB) : null,
-      },
-    },
-  });
+function sideDone(db, sessionId, phase, deckIds, side) {
+  if (deckIds.length === 0) return false;
+  const swiped = new Set(
+    getSwipes(db, sessionId, phase).filter(s => s.side === side).map(s => s.itemId),
+  );
+  return deckIds.every(id => swiped.has(id));
 }
 
 export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) {
@@ -117,6 +91,45 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     [slugs.a]: 'a',
     [slugs.b]: 'b',
   };
+
+  // Dedupes concurrent cold-cache fetches for the same session.
+  const deckFetches = new Map();
+
+  async function ensureRestaurantDeck(session) {
+    if (session.deckJson) return { deck: JSON.parse(session.deckJson), error: null };
+    let inflight = deckFetches.get(session.id);
+    if (!inflight) {
+      inflight = fetchRestaurantDeck(places, session.matchedCuisine)
+        .finally(() => deckFetches.delete(session.id));
+      deckFetches.set(session.id, inflight);
+    }
+    const { deck, error } = await inflight;
+    // Snapshot only complete decks; an errored or empty result stays retryable.
+    if (!error && deck.length > 0) setSessionDeck(db, session.id, deck);
+    return { deck, error };
+  }
+
+  async function finishCuisines(session, matched) {
+    const updated = advanceOnMatch(db, { sessionId: session.id, phase: 'cuisines', match: matched });
+    await ensureRestaurantDeck(updated); // warm the snapshot; failures surface via /api/state deckError
+    hub.broadcast({ type: 'match', phase: 'cuisines', item: matched });
+    hub.broadcast({ type: 'phase-change', phase: 'restaurants' });
+  }
+
+  async function transitionAfterCuisineSwipes(session) {
+    const overlap = computeCuisineOverlap(db, session.id, CUISINES.map(c => c.id));
+    if (overlap.length === 0) {
+      hub.broadcast({ type: 'stage-change', stage: 'no-overlap' });
+      return;
+    }
+    if (overlap.length === 1) {
+      await finishCuisines(session, cuisineById(overlap[0]));
+      return;
+    }
+    createRound(db, session.id, 0, overlap);
+    setCuisineStage(db, session.id, 'bracket');
+    hub.broadcast({ type: 'stage-change', stage: 'bracket' });
+  }
 
   router.get('/healthz', (_req, res) => {
     res.json({ ok: true });
@@ -148,18 +161,25 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
 
   router.get('/api/state', requireSide, async (req, res) => {
     const session = ensureSession(db);
-    const deck = await buildDeck(places, session);
+    const otherSide = req.side === 'a' ? 'b' : 'a';
     const mySwipes = getSwipes(db, session.id, session.phase).filter(s => s.side === req.side);
 
+    let deck = [];
+    let deckError = null;
     let stage = null;
     let bracket = null;
     let partnerDone = false;
 
     if (session.phase === 'cuisines') {
+      deck = CUISINES;
       stage = session.cuisineStage;
-      const otherSide = req.side === 'a' ? 'b' : 'a';
-      const otherSwipes = getSwipes(db, session.id, 'cuisines').filter(s => s.side === otherSide);
-      partnerDone = otherSwipes.length >= CUISINES.length;
+      const deckIds = CUISINES.map(c => c.id);
+      partnerDone = sideDone(db, session.id, 'cuisines', deckIds, otherSide);
+      if (stage === 'swipe'
+          && isDeckExhausted(db, session.id, 'cuisines', deckIds)
+          && computeCuisineOverlap(db, session.id, deckIds).length === 0) {
+        stage = 'no-overlap';
+      }
       if (stage === 'bracket') {
         const cur = getCurrentPair(db, session.id);
         const myVoteRow = cur ? db.prepare(
@@ -173,11 +193,15 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
           myVote: myVoteRow?.pick ?? null,
         };
       }
+    } else if (session.phase === 'restaurants') {
+      ({ deck, error: deckError } = await ensureRestaurantDeck(session));
+      partnerDone = sideDone(db, session.id, 'restaurants', deck.map(r => r.id), otherSide);
     }
 
     res.json({
       phase: session.phase,
       stage,
+      deckError,
       matchedCuisine: session.matchedCuisine,
       matchedRestaurant: session.matchedRestaurantJson ? JSON.parse(session.matchedRestaurantJson) : null,
       deck,
@@ -201,6 +225,9 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     }
     const session = ensureSession(db);
 
+    if (session.phase === 'done') {
+      return res.status(400).json({ error: 'session already matched' });
+    }
     if (session.phase === 'cuisines' && session.cuisineStage === 'bracket') {
       return res.status(400).json({ error: 'cannot swipe during bracket stage; use /api/bracket-vote' });
     }
@@ -210,26 +237,23 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     });
 
     if (session.phase === 'cuisines') {
-      const mineCount = getSwipes(db, session.id, 'cuisines').filter(s => s.side === req.side).length;
-      if (mineCount === CUISINES.length) {
-        hub.broadcast({ type: 'partner-done', side: req.side, swipedCount: mineCount });
+      const deckIds = CUISINES.map(c => c.id);
+      if (sideDone(db, session.id, 'cuisines', deckIds, req.side)) {
+        hub.broadcast({ type: 'partner-done', side: req.side });
       }
-      if (bothDoneSwipingCuisines(db, session.id, CUISINES.map(c => c.id))) {
-        await transitionFromSwipeToBracket({
-          db, session, places, hub,
-          CUISINES,
-          cuisineById,
-          advanceOnMatch,
-          restaurantsForCuisine,
-        });
+      if (isDeckExhausted(db, session.id, 'cuisines', deckIds)) {
+        await transitionAfterCuisineSwipes(session);
       }
       return res.json({ matched: false });
     }
 
     // restaurants phase
+    const { deck } = await ensureRestaurantDeck(session);
+    if (sideDone(db, session.id, 'restaurants', deck.map(r => r.id), req.side)) {
+      hub.broadcast({ type: 'partner-done', side: req.side });
+    }
     if (!result.matched) return res.json({ matched: false });
-    const restaurants = await restaurantsForCuisine(places, session.matchedCuisine);
-    const matchItem = restaurants.find(r => r.id === itemId);
+    const matchItem = deck.find(r => r.id === itemId);
     if (!matchItem) return res.status(404).json({ error: 'unknown restaurant' });
     advanceOnMatch(db, { sessionId: session.id, phase: 'restaurants', match: matchItem });
     hub.broadcast({ type: 'match', phase: 'restaurants', item: matchItem });
@@ -270,11 +294,7 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
     const next = buildNextRound(db, session.id, deckOrder);
 
     if (next.done) {
-      const matched = cuisineById(next.winner);
-      advanceOnMatch(db, { sessionId: session.id, phase: 'cuisines', match: matched });
-      const restaurants = await restaurantsForCuisine(places, matched.id);
-      hub.broadcast({ type: 'match', phase: 'cuisines', item: matched });
-      hub.broadcast({ type: 'phase-change', phase: 'restaurants', deck: restaurants });
+      await finishCuisines(session, cuisineById(next.winner));
       return res.json({ resolved: true, done: true });
     }
 
@@ -301,32 +321,15 @@ export function makeRouter({ db, places, hub, sideNames = { a: 'A', b: 'B' } }) 
         const overlap = computeCuisineOverlap(db, session.id, CUISINES.map(c => c.id));
         if (overlap.length >= 2) {
           createRound(db, session.id, 0, overlap);
-          const cur = getCurrentPair(db, session.id);
-          hub.broadcast({
-            type: 'phase-reset',
-            phase: 'cuisines',
-            bracket: {
-              roundIndex: cur.roundIndex,
-              currentPair: {
-                pairIndex: cur.pairIndex,
-                a: cuisineById(cur.itemA),
-                b: cur.itemB ? cuisineById(cur.itemB) : null,
-              },
-            },
-          });
         } else {
           setCuisineStage(db, session.id, 'swipe');
-          hub.broadcast({ type: 'phase-reset', phase: 'cuisines', deck: CUISINES });
         }
+        hub.broadcast({ type: 'phase-reset', phase: 'cuisines' });
         return res.json({ ok: true });
       }
 
       resetPhase(db, session.id, session.phase);
-      let deck;
-      if (session.phase === 'cuisines') deck = CUISINES;
-      else if (session.phase === 'restaurants') deck = await restaurantsForCuisine(places, session.matchedCuisine);
-      else deck = [];
-      hub.broadcast({ type: 'phase-reset', phase: session.phase, deck });
+      hub.broadcast({ type: 'phase-reset', phase: session.phase });
       return res.json({ ok: true });
     }
     if (scope === 'session') {

@@ -29,6 +29,7 @@ function rowToSession(r) {
     cuisineStage: r.cuisine_stage,
     matchedCuisine: r.matched_cuisine,
     matchedRestaurantJson: r.matched_restaurant_json,
+    deckJson: r.deck_json,
   };
 }
 
@@ -96,13 +97,9 @@ export function resetSession(db) {
   return createSession(db);
 }
 
-export function bothDoneSwipingCuisines(db, sessionId, deckIds) {
-  const rows = db.prepare(
-    "SELECT side, item_id FROM swipe WHERE session_id=? AND phase='cuisines'"
-  ).all(sessionId);
-  const aSwiped = new Set(rows.filter(r => r.side === 'a').map(r => r.item_id));
-  const bSwiped = new Set(rows.filter(r => r.side === 'b').map(r => r.item_id));
-  return deckIds.every(id => aSwiped.has(id) && bSwiped.has(id));
+export function setSessionDeck(db, sessionId, deck) {
+  db.prepare('UPDATE session SET deck_json=?, updated_at=? WHERE id=?')
+    .run(JSON.stringify(deck), now(), sessionId);
 }
 
 export function computeCuisineOverlap(db, sessionId, deckIds) {

@@ -11,6 +11,7 @@ describe('openDb', () => {
     expect(tables).toEqual(['bracket_round', 'bracket_vote', 'place_cache', 'restaurant_cache', 'session', 'swipe']);
     const cols = db.prepare("PRAGMA table_info('session')").all().map(c => c.name);
     expect(cols).toContain('cuisine_stage');
+    expect(cols).toContain('deck_json');
   });
 
   it('enforces phase check constraint on session', () => {
@@ -77,5 +78,28 @@ describe('openDb', () => {
     expect(cols).toContain('cuisine_stage');
     const row = v1.prepare('SELECT cuisine_stage FROM session WHERE id = 1').get();
     expect(row.cuisine_stage).toBe('swipe');
+  });
+});
+
+describe('migrateSchema — deck_json', () => {
+  it('adds deck_json to an existing session table missing it', async () => {
+    const v2 = new Database(':memory:');
+    v2.exec(`
+      CREATE TABLE session (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phase TEXT NOT NULL,
+        cuisine_stage TEXT NOT NULL DEFAULT 'swipe',
+        matched_cuisine TEXT,
+        matched_restaurant_json TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    v2.prepare('INSERT INTO session(phase, created_at, updated_at) VALUES (?,?,?)').run('cuisines', 1, 1);
+    const { migrateSchema } = await import('../src/db.js');
+    migrateSchema(v2);
+    const cols = v2.prepare("PRAGMA table_info('session')").all().map(c => c.name);
+    expect(cols).toContain('deck_json');
+    expect(v2.prepare('SELECT deck_json FROM session WHERE id=1').get().deck_json).toBeNull();
   });
 });

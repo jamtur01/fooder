@@ -209,3 +209,116 @@ describe('POST /api/bracket-vote', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /api/state — flakiness regressions', () => {
+  async function swipeAllCuisines(side, rightItems, agent = app) {
+    const { CUISINES } = await import('../src/cuisines.js');
+    for (const c of CUISINES) {
+      const dir = rightItems.includes(c.id) ? 'right' : 'left';
+      await request(agent).post('/api/swipe').set('Cookie', `side=${side}`).send({ itemId: c.id, direction: dir });
+    }
+  }
+
+  it('derives stage=no-overlap when both finished with zero overlap (reload-safe)', async () => {
+    await swipeAllCuisines('a', ['thai']);
+    await swipeAllCuisines('b', ['pizza']);
+    const res = await request(app).get('/api/state').set('Cookie', 'side=a');
+    expect(res.body.phase).toBe('cuisines');
+    expect(res.body.stage).toBe('no-overlap');
+  });
+
+  it('stage stays swipe while partner is not done', async () => {
+    await swipeAllCuisines('a', ['thai']);
+    const res = await request(app).get('/api/state').set('Cookie', 'side=a');
+    expect(res.body.stage).toBe('swipe');
+  });
+});
+
+const R1 = { id: 'ChIJ1', name: 'Spicy Thai', address: '1 St', phone: null, mapsUrl: null, rating: 4.5, priceLevel: 2, photoUrl: null };
+const R2 = { id: 'ChIJ2', name: 'Thai Two', address: '2 St', phone: null, mapsUrl: null, rating: 4.0, priceLevel: 1, photoUrl: null };
+const R3 = { id: 'ChIJ3', name: 'Drifter', address: '3 St', phone: null, mapsUrl: null, rating: 3.9, priceLevel: 1, photoUrl: null };
+const FAV = { id: 'ChIJfav', name: 'Old Faithful', address: '9 St', phone: null, mapsUrl: null, rating: 5, priceLevel: 2, photoUrl: null };
+
+describe('restaurant deck snapshot and deckError', () => {
+  async function reachRestaurants(agent) {
+    const { CUISINES } = await import('../src/cuisines.js');
+    for (const c of CUISINES) {
+      const dir = c.id === 'thai' ? 'right' : 'left';
+      await request(agent).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: c.id, direction: dir });
+      await request(agent).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: c.id, direction: dir });
+    }
+  }
+
+  it('snapshots deck at transition; search drift changes neither deck nor match lookup', async () => {
+    let results = [R1, R2];
+    const { app: myApp, db: myDb } = buildApp({ placesOverride: {
+      searchRestaurants: async () => results,
+      getFavorites: async () => [],
+    } });
+    await reachRestaurants(myApp);
+    results = [R3]; // upstream drift (cache expiry + openNow churn)
+
+    const state = await request(myApp).get('/api/state').set('Cookie', 'side=a');
+    expect(state.body.deck.map(r => r.id)).toEqual(['ChIJ1', 'ChIJ2']);
+
+    await request(myApp).post('/api/swipe').set('Cookie', 'side=a').send({ itemId: 'ChIJ1', direction: 'right' });
+    const res = await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'right' });
+    expect(res.status).toBe(200);
+    expect(res.body.matched).toBe(true);
+    const row = myDb.prepare('SELECT phase FROM session ORDER BY id DESC LIMIT 1').get();
+    expect(row.phase).toBe('done');
+  });
+
+  it('surfaces deckError with favorites-only deck when search fails', async () => {
+    const { app: myApp } = buildApp({ placesOverride: {
+      searchRestaurants: async () => { throw new Error('Places API 500'); },
+      getFavorites: async () => [FAV],
+    } });
+    await reachRestaurants(myApp);
+    const res = await request(myApp).get('/api/state').set('Cookie', 'side=a');
+    expect(res.status).toBe(200);
+    expect(res.body.deckError).toMatch(/Places API 500/);
+    expect(res.body.deck.map(r => r.id)).toEqual(['ChIJfav']);
+  });
+
+  it('recovers the deck on a later state fetch after a transient search failure', async () => {
+    let fail = true;
+    const { app: myApp } = buildApp({ placesOverride: {
+      searchRestaurants: async () => { if (fail) throw new Error('boom'); return [R1]; },
+      getFavorites: async () => [],
+    } });
+    await reachRestaurants(myApp); // transition happens while search is failing
+    fail = false;
+    const res = await request(myApp).get('/api/state').set('Cookie', 'side=a');
+    expect(res.body.deckError).toBeNull();
+    expect(res.body.deck.map(r => r.id)).toEqual(['ChIJ1']);
+  });
+
+  it('partnerDone=true in restaurants phase once partner exhausted the deck', async () => {
+    const { app: myApp } = buildApp({ placesOverride: {
+      searchRestaurants: async () => [R1, R2],
+      getFavorites: async () => [],
+    } });
+    await reachRestaurants(myApp);
+    await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'left' });
+    await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ2', direction: 'left' });
+    const res = await request(myApp).get('/api/state').set('Cookie', 'side=a');
+    expect(res.body.partnerDone).toBe(true);
+  });
+
+  it('broadcasts partner-done when a side exhausts the restaurant deck', async () => {
+    const { app: myApp, hub } = buildApp({ placesOverride: {
+      searchRestaurants: async () => [R1, R2],
+      getFavorites: async () => [],
+    } });
+    await reachRestaurants(myApp);
+    const writes = [];
+    const client = { write: (chunk) => writes.push(chunk) };
+    hub.register('a', client);
+    await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ1', direction: 'left' });
+    await request(myApp).post('/api/swipe').set('Cookie', 'side=b').send({ itemId: 'ChIJ2', direction: 'left' });
+    const events = writes.filter(w => w.startsWith('data: ')).map(w => JSON.parse(w.slice(6)));
+    expect(events.some(e => e.type === 'partner-done' && e.side === 'b')).toBe(true);
+    hub.unregister('a', client);
+  });
+});

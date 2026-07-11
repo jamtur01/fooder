@@ -1,37 +1,43 @@
-export function createSseHub() {
+export function createSseHub({ heartbeatMs = 25000 } = {}) {
   const conns = { a: new Set(), b: new Set() };
-  const changeListeners = new Set();
+  let heartbeat = null;
 
   function isOnline(side) { return conns[side].size > 0; }
 
-  function notifyChange(side, online) {
-    for (const fn of changeListeners) fn(side, online);
+  function eachClient(fn) {
+    for (const side of ['a', 'b']) {
+      for (const client of conns[side]) fn(client);
+    }
+  }
+
+  // Proxies (Railway et al.) kill idle SSE connections; comment pings keep them alive.
+  function startHeartbeat() {
+    if (heartbeat) return;
+    heartbeat = setInterval(() => eachClient(c => c.write(': ping\n\n')), heartbeatMs);
+    heartbeat.unref?.();
+  }
+
+  function stopHeartbeatIfIdle() {
+    if (heartbeat && conns.a.size + conns.b.size === 0) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
   }
 
   function register(side, client) {
-    const wasOnline = isOnline(side);
     conns[side].add(client);
-    if (!wasOnline) notifyChange(side, true);
+    startHeartbeat();
   }
 
   function unregister(side, client) {
     conns[side].delete(client);
-    if (!isOnline(side)) notifyChange(side, false);
+    stopHeartbeatIfIdle();
   }
 
   function broadcast(event) {
     const chunk = `data: ${JSON.stringify(event)}\n\n`;
-    for (const side of ['a', 'b']) {
-      for (const client of conns[side]) client.write(chunk);
-    }
+    eachClient(c => c.write(chunk));
   }
 
-  function sendTo(side, event) {
-    const chunk = `data: ${JSON.stringify(event)}\n\n`;
-    for (const client of conns[side]) client.write(chunk);
-  }
-
-  function onChange(fn) { changeListeners.add(fn); }
-
-  return { register, unregister, broadcast, sendTo, onChange, isOnline };
+  return { register, unregister, broadcast, isOnline };
 }
