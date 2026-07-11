@@ -10,6 +10,8 @@ Two phases:
    - 2+ overlap → **bracket**. Pair survivors in deck order, both partners tap their pick for each pair. Agree → other item out; disagree → both advance. Repeats until one remains. (Final-pair stalemate: after 3 consecutive ties, the earlier-in-deck item wins.)
 2. **Restaurants** — server fetches restaurants for the matched cuisine, prepends your favorites, and serves them as a deck. First mutual right-swipe wins. Match screen shows photo, address, phone, Google Maps link.
 
+The restaurant deck is snapshotted onto the session at the moment of the cuisine match, so both partners always see the same deck even if the underlying Places cache expires mid-session. If the Places search fails, the deck degrades to favorites-only and the UI shows the error; the next state fetch retries.
+
 Real-time over SSE: partner-online indicators, "partner is done swiping", bracket round transitions all push live.
 
 ## Local dev
@@ -29,7 +31,7 @@ Open the app in two tabs — one per side. With default settings, that's http://
 
     npm test
 
-99 tests across the db, session machine, bracket logic, places client, SSE hub, routes, and a full end-to-end integration. All run in-memory.
+106 tests across the db, session machine, bracket logic, places client, SSE hub, routes, and a full end-to-end integration. All run in-memory.
 
 ## Environment variables
 
