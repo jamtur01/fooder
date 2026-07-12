@@ -3,7 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch --env-file=.env server.js",
@@ -13,14 +15,15 @@
     "format": "oxfmt ."
   },
   "dependencies": {
-    "express": "5.2.1",
+    "@emnapi/core": "^1.11.2",
     "better-sqlite3": "12.10.0",
-    "cookie": "1.1.1"
+    "cookie": "1.1.1",
+    "express": "5.2.1"
   },
   "devDependencies": {
-    "vitest": "4.1.7",
-    "supertest": "7.2.2",
+    "oxfmt": "0.51.0",
     "oxlint": "1.66.0",
-    "oxfmt": "0.51.0"
+    "supertest": "7.2.2",
+    "vitest": "4.1.7"
   }
 }
