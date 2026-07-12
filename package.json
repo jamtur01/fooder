@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@emnapi/core": "^1.11.2",
+    "@emnapi/runtime": "^1.11.2",
     "better-sqlite3": "12.10.0",
     "cookie": "1.1.1",
     "express": "5.2.1"
